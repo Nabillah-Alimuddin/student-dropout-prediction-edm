@@ -31,9 +31,6 @@ The practical objective is an **early warning system**: predict dropout risk *be
 ```
 riset/
 ├── README.md                        # Project overview (this file)
-├── PROJECT_OVERVIEW.md              # Detailed pipeline documentation
-├── enhacementRoadmap.md             # Research enhancement roadmap
-├── researchPipeline.md              # Pipeline design notes
 ├── main.py                          # Entry point for the core pipeline
 │
 ├── data/

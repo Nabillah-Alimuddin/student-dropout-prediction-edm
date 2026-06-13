@@ -53,3 +53,9 @@ ehthumbs.db
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 optuna_study.db
+
+# ─── instruction files ───────────────────────────────────────────────────────────────
+*enhancementRoadmap.md
+*feedbackReviewer.md
+*PROJECT_OVERVIEW.md
+*researchPipeline.md
