@@ -1,0 +1,55 @@
+# ─── Python Virtual Environment ───────────────────────────────────────────────
+.venv/
+venv/
+ENV/
+env/
+
+# ─── Python bytecode and cache ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# ─── Jupyter Notebook checkpoints ────────────────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# ─── Dataset (large binary / sensitive — add manually) ───────────────────────
+data/raw/*.csv
+data/raw/*.xlsx
+data/raw/*.xls
+
+# ─── Model binaries (large binary files) ─────────────────────────────────────
+models/*.pkl
+models/*.joblib
+models/*.h5
+models/*.cbm
+
+# ─── CatBoost training metadata ──────────────────────────────────────────────
+catboost_info/
+
+# ─── Generated transient outputs (keep markdown reports, ignore plots/CSVs) ──
+outputs/*.pdf
+outputs/*.png
+outputs/*.csv
+
+# ─── PDF outputs inside notebooks/ folder ────────────────────────────────────
+notebooks/*.pdf
+
+# ─── Operating System files ───────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.DS_Store
+ehthumbs.db
+
+# ─── IDE and Editor configurations ───────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+optuna_study.db

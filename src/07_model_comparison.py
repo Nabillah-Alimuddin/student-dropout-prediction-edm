@@ -1,0 +1,158 @@
+"""
+07_model_comparison.py — Phase 8: Baseline Model Comparison.
+
+Compares 5 models on the same test set:
+  1. Decision Tree (class_weight='balanced')
+  2. Logistic Regression (class_weight='balanced', max_iter=1000)
+  3. Random Forest (class_weight='balanced', n_estimators=100)
+  4. XGBoost Baseline (default: n_estimators=100, max_depth=6, lr=0.1)
+  5. XGBoost + SMOTE-ENN (proposed, Optuna-tuned)
+"""
+
+import time
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import (
+    f1_score, recall_score, precision_score,
+    roc_auc_score, balanced_accuracy_score,
+    precision_recall_curve, average_precision_score
+)
+
+from src.config import SEED
+from src.utils import catat_waktu, save_pdf, print_separator
+
+
+def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optimal_threshold=0.50):
+    """
+    Train 4 baseline models and compare with the proposed model.
+
+    Args:
+        model_proposed: Trained proposed XGBoost model.
+        X_train_sc: Scaled training features (original, not resampled).
+        y_train: Training target (original, not resampled).
+        X_test_sc: Scaled test features.
+        y_test: Test target.
+        optimal_threshold: The optimal probability threshold for proposed model.
+
+    Returns:
+        comparison_df (pd.DataFrame): Comparison metrics for all models.
+        models_dict (dict): Dictionary of {name: trained_model}.
+        predictions_dict (dict): Dictionary of {name: y_pred}.
+    """
+    print_separator("PHASE 8: BASELINE MODEL COMPARISON")
+    mulai = time.time()
+
+    # ─── Define baseline models ───────────────────────────────────────────
+    baselines = {
+        "Decision Tree": DecisionTreeClassifier(
+            class_weight="balanced", random_state=SEED
+        ),
+        "Logistic Regression": LogisticRegression(
+            class_weight="balanced", max_iter=1000, random_state=SEED
+        ),
+        "Random Forest": RandomForestClassifier(
+            class_weight="balanced", n_estimators=100, random_state=SEED
+        ),
+        "XGBoost (Baseline)": XGBClassifier(
+            n_estimators=100, max_depth=6, learning_rate=0.1,
+            random_state=SEED, use_label_encoder=False,
+            eval_metric="logloss"
+        ),
+    }
+
+    # ─── Train baselines on original scaled data ──────────────────────────
+    models_dict = {}
+    predictions_dict = {}
+    proba_dict = {}
+    comparison_rows = []
+
+    for name, clf in baselines.items():
+        print(f"  Training: {name}...")
+        clf.fit(X_train_sc, y_train)
+        y_pred = clf.predict(X_test_sc)
+        y_proba = clf.predict_proba(X_test_sc)[:, 1]
+
+        models_dict[name] = clf
+        predictions_dict[name] = y_pred
+        proba_dict[name] = y_proba
+
+        comparison_rows.append({
+            "Model": name,
+            "F1-Dropout": f1_score(y_test, y_pred, pos_label=1),
+            "Recall": recall_score(y_test, y_pred, pos_label=1),
+            "Precision": precision_score(y_test, y_pred, pos_label=1),
+            "AUC-ROC": roc_auc_score(y_test, y_proba),
+            "Balanced Acc": balanced_accuracy_score(y_test, y_pred),
+        })
+
+    # ─── Add proposed model ───────────────────────────────────────────────
+    y_proba_prop = model_proposed.predict_proba(X_test_sc)[:, 1]
+    y_pred_prop = (y_proba_prop >= optimal_threshold).astype(int)
+    models_dict["XGBoost + SMOTE-ENN (Proposed)"] = model_proposed
+    predictions_dict["XGBoost + SMOTE-ENN (Proposed)"] = y_pred_prop
+    proba_dict["XGBoost + SMOTE-ENN (Proposed)"] = y_proba_prop
+
+    comparison_rows.append({
+        "Model": "XGBoost + SMOTE-ENN (Proposed)",
+        "F1-Dropout": f1_score(y_test, y_pred_prop, pos_label=1),
+        "Recall": recall_score(y_test, y_pred_prop, pos_label=1),
+        "Precision": precision_score(y_test, y_pred_prop, pos_label=1),
+        "AUC-ROC": roc_auc_score(y_test, y_proba_prop),
+        "Balanced Acc": balanced_accuracy_score(y_test, y_pred_prop),
+    })
+
+    comparison_df = pd.DataFrame(comparison_rows)
+
+    print(f"\n  Model Comparison Results:")
+    print(comparison_df.to_string(index=False))
+
+    # ─── Visualization: Grouped bar chart ─────────────────────────────────
+    metric_cols = ["F1-Dropout", "Recall", "Precision", "AUC-ROC", "Balanced Acc"]
+    x = np.arange(len(metric_cols))
+    width = 0.15
+    colors = ["#3498db", "#2ecc71", "#e67e22", "#9b59b6", "#e74c3c"]
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+    for i, (_, row) in enumerate(comparison_df.iterrows()):
+        vals = [row[m] for m in metric_cols]
+        ax.bar(x + i * width, vals, width, label=row["Model"], color=colors[i],
+               edgecolor="black", linewidth=0.5)
+
+    ax.set_xlabel("Metrics", fontsize=12)
+    ax.set_ylabel("Score", fontsize=12)
+    ax.set_title("Model Comparison — All Metrics", fontsize=14, fontweight="bold")
+    ax.set_xticks(x + width * 2)
+    ax.set_xticklabels(metric_cols, fontsize=10)
+    ax.legend(fontsize=9, loc="lower right")
+    ax.set_ylim(0, 1.05)
+    ax.grid(axis="y", alpha=0.3)
+
+    plt.tight_layout()
+    save_pdf(fig, "v3_perbandingan_metrik.pdf")
+    plt.close(fig)
+
+    # ─── Visualization: Precision-Recall Curves ───────────────────────────
+    fig, ax = plt.subplots(figsize=(10, 7))
+    for name, y_proba in proba_dict.items():
+        prec_vals, rec_vals, _ = precision_recall_curve(y_test, y_proba)
+        ap = average_precision_score(y_test, y_proba)
+        ax.plot(rec_vals, prec_vals, lw=2, label=f"{name} (AP={ap:.4f})")
+
+    ax.set_xlabel("Recall", fontsize=12)
+    ax.set_ylabel("Precision", fontsize=12)
+    ax.set_title("Precision-Recall Curve — All Models", fontsize=14, fontweight="bold")
+    ax.legend(fontsize=9, loc="lower left")
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    save_pdf(fig, "v3_precision_recall_curve.pdf")
+    plt.close(fig)
+
+    catat_waktu("Model Comparison", mulai)
+
+    return comparison_df, models_dict, predictions_dict
