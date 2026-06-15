@@ -41,7 +41,7 @@ Mahasiswa dalam kelompok False Positive diprediksi akan dropout, namun pada keny
 
 ### 4. Dampak Penerima Beasiswa (Scholarship Holder)
 - **Proporsi Penerima Beasiswa yang Kontras**: Hanya **9.1%** dari kelompok TP dan **10.5%** dari kelompok FN yang merupakan penerima beasiswa, dibandingkan dengan **34.5%** pada kelompok lulusan (TN). Pola yang sangat kuat ini menegaskan bahwa penerima beasiswa secara signifikan lebih condong masuk ke dalam kelompok lulusan.
-- **Mekanisme Beasiswa**: Beasiswa berfungsi secara ganda: sebagai instrumen bantuan finansial yang mengurangi beban ekonomi (mengeliminasi stres finansial), sekaligus sebagai stimulus motivasi akademis dan indikator pencapaian akademik awal yang lebih tinggi sebelum masuk universitas.
+- **Mekanisme Beasiswa**: Tingginya proporsi penerima beasiswa pada kelompok lulusan menunjukkan adanya hubungan positif antara status penerima beasiswa dan keberhasilan studi. Temuan ini mengindikasikan bahwa beasiswa dapat berperan sebagai faktor pendukung keberlangsungan studi, meskipun mekanisme spesifik yang mendasari hubungan tersebut tidak dapat ditentukan secara langsung dari dataset yang tersedia.
 
 ### 5. Ringkasan Sintesis untuk Pembahasan Tesis
 > The error analysis suggests that student dropout is strongly associated with early academic performance; however, a small subset of students with seemingly satisfactory academic progress still withdraw from university. These students are difficult to identify using conventional academic and financial indicators, indicating the possible influence of additional unobserved factors beyond those available in the dataset. Consequently, institutions should not rely exclusively on academic performance metrics when designing early-warning systems.

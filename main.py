@@ -43,6 +43,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 from src.config import SEED, OUTPUT_DIR, MODEL_DIR
+
 from src.utils import reset_waktu_log, print_separator
 
 def main():
@@ -115,7 +116,7 @@ def main():
     # ═══════════════════════════════════════════════════════════════════════
     model_comparison = importlib.import_module("src.07_model_comparison")
     compare_models = model_comparison.compare_models
-    # Pass optimal_threshold to compare models at their best thresholds
+    # Pass the optimal threshold found for the proposed model
     comparison_df, models_dict, predictions_dict = compare_models(
         model, X_train_sc, y_train, X_test_sc, y_test,
         optimal_threshold=eval_results["optimal_threshold"]
@@ -158,7 +159,17 @@ def main():
     # ═══════════════════════════════════════════════════════════════════════
     smoteenn_analysis = importlib.import_module("src.13_smoteenn_analysis")
     run_smoteenn_analysis = smoteenn_analysis.run_smoteenn_analysis
-    run_smoteenn_analysis(X_train_sc, y_train, X_res, y_res, X_test_sc, y_test)
+    # ─── Threshold Sensitivity Analysis (Recall‑first Early‑Warning) ────────────────────────
+    run_threshold_analysis = smoteenn_analysis.threshold_sensitivity_analysis
+    threshold_df, optimal_thr = run_threshold_analysis(model, X_test_sc, y_test)
+    # Save threshold analysis results
+    threshold_df.to_csv(f"{OUTPUT_DIR}/threshold_sensitivity_analysis.csv", index=False)
+    print(f"  📄 Threshold analysis CSV saved to {OUTPUT_DIR}/threshold_sensitivity_analysis.csv")
+    if optimal_thr is not None:
+        print(f"  🎯 Optimal threshold (Recall ≥ 0.90): {optimal_thr}")
+    else:
+        print("  ⚠️ No threshold achieved Recall ≥ 0.90")
+    
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 13: Timing Summary

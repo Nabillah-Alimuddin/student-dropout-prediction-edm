@@ -30,6 +30,8 @@ from src.utils import catat_waktu, save_pdf, print_separator
 def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optimal_threshold=0.50):
     """
     Train 4 baseline models and compare with the proposed model.
+    All models are evaluated at their respective optimal thresholds (tuned via Stratified OOF CV)
+    for a fair, apple-to-apple comparison.
 
     Args:
         model_proposed: Trained proposed XGBoost model.
@@ -37,7 +39,7 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
         y_train: Training target (original, not resampled).
         X_test_sc: Scaled test features.
         y_test: Test target.
-        optimal_threshold: The optimal probability threshold for proposed model.
+        optimal_threshold: The optimal probability threshold for proposed model (already optimized).
 
     Returns:
         comparison_df (pd.DataFrame): Comparison metrics for all models.
@@ -46,6 +48,31 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
     """
     print_separator("PHASE 8: BASELINE MODEL COMPARISON")
     mulai = time.time()
+
+    from sklearn.model_selection import StratifiedKFold, cross_val_predict
+
+    # Helper function to find optimal threshold using Stratified OOF CV
+    def find_best_threshold_oof(clf, X, y):
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
+        try:
+            y_oof_proba = cross_val_predict(
+                clf, X, y, cv=skf, method="predict_proba", n_jobs=-1
+            )[:, 1]
+        except Exception:
+            y_oof_proba = cross_val_predict(
+                clf, X, y, cv=skf, method="predict_proba"
+            )[:, 1]
+        
+        thresholds = np.arange(0.1, 0.9, 0.01)
+        best_f1 = -1
+        best_t = 0.50
+        for t in thresholds:
+            y_pred_t = (y_oof_proba >= t).astype(int)
+            f1 = f1_score(y, y_pred_t, pos_label=1, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_t = t
+        return best_t
 
     # ─── Define baseline models ───────────────────────────────────────────
     baselines = {
@@ -72,10 +99,16 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
     comparison_rows = []
 
     for name, clf in baselines.items():
-        print(f"  Training: {name}...")
+        print(f"  Training & Optimizing Threshold: {name}...")
         clf.fit(X_train_sc, y_train)
-        y_pred = clf.predict(X_test_sc)
+        
+        # Optimize threshold using Stratified OOF CV
+        opt_t = find_best_threshold_oof(clf, X_train_sc, y_train)
+        
         y_proba = clf.predict_proba(X_test_sc)[:, 1]
+        y_pred = (y_proba >= opt_t).astype(int)
+
+        print(f"    Optimal Threshold: {opt_t:.2f}")
 
         models_dict[name] = clf
         predictions_dict[name] = y_pred
@@ -83,10 +116,12 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
 
         comparison_rows.append({
             "Model": name,
-            "F1-Dropout": f1_score(y_test, y_pred, pos_label=1),
-            "Recall": recall_score(y_test, y_pred, pos_label=1),
-            "Precision": precision_score(y_test, y_pred, pos_label=1),
+            "Threshold": opt_t,
+            "F1-Dropout": f1_score(y_test, y_pred, pos_label=1, zero_division=0),
+            "Recall": recall_score(y_test, y_pred, pos_label=1, zero_division=0),
+            "Precision": precision_score(y_test, y_pred, pos_label=1, zero_division=0),
             "AUC-ROC": roc_auc_score(y_test, y_proba),
+            "PR-AUC": average_precision_score(y_test, y_proba),
             "Balanced Acc": balanced_accuracy_score(y_test, y_pred),
         })
 
@@ -97,22 +132,27 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
     predictions_dict["XGBoost + SMOTE-ENN (Proposed)"] = y_pred_prop
     proba_dict["XGBoost + SMOTE-ENN (Proposed)"] = y_proba_prop
 
+    print(f"  Adding Proposed Model (XGBoost + SMOTE-ENN)...")
+    print(f"    Optimal Threshold: {optimal_threshold:.2f}")
+
     comparison_rows.append({
         "Model": "XGBoost + SMOTE-ENN (Proposed)",
-        "F1-Dropout": f1_score(y_test, y_pred_prop, pos_label=1),
-        "Recall": recall_score(y_test, y_pred_prop, pos_label=1),
-        "Precision": precision_score(y_test, y_pred_prop, pos_label=1),
+        "Threshold": optimal_threshold,
+        "F1-Dropout": f1_score(y_test, y_pred_prop, pos_label=1, zero_division=0),
+        "Recall": recall_score(y_test, y_pred_prop, pos_label=1, zero_division=0),
+        "Precision": precision_score(y_test, y_pred_prop, pos_label=1, zero_division=0),
         "AUC-ROC": roc_auc_score(y_test, y_proba_prop),
+        "PR-AUC": average_precision_score(y_test, y_proba_prop),
         "Balanced Acc": balanced_accuracy_score(y_test, y_pred_prop),
     })
 
     comparison_df = pd.DataFrame(comparison_rows)
 
-    print(f"\n  Model Comparison Results:")
+    print(f"\n  Model Comparison Results (All Optimized):")
     print(comparison_df.to_string(index=False))
 
     # ─── Visualization: Grouped bar chart ─────────────────────────────────
-    metric_cols = ["F1-Dropout", "Recall", "Precision", "AUC-ROC", "Balanced Acc"]
+    metric_cols = ["F1-Dropout", "Recall", "Precision", "AUC-ROC", "Balanced Acc", "PR-AUC"]
     x = np.arange(len(metric_cols))
     width = 0.15
     colors = ["#3498db", "#2ecc71", "#e67e22", "#9b59b6", "#e74c3c"]
