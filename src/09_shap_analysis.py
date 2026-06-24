@@ -1,17 +1,18 @@
 """
 09_shap_analysis.py — Phase 11: SHAP Explainability Analysis.
 
-TreeExplainer for XGBoost: beeswarm, global bar, top-10 table,
+TreeExplainer for XGBoost: beeswarm, global bar, top-20 ranking table (CSV),
 dependence plots (top 3 features), and individual waterfall plots.
 """
 
 import time
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import shap
 
-from src.config import SEED
+from src.config import SEED, OUTPUT_DIR
 from src.utils import catat_waktu, save_pdf, print_separator
 
 
@@ -60,10 +61,10 @@ def run_shap_analysis(model, X_test_sc, y_test, y_pred):
     save_pdf(plt.gcf(), "v3_shap_global_bar.pdf")
     plt.close("all")
 
-    # ─── 3. Top 10 Feature Table ──────────────────────────────────────────
-    print(f"\n  Top 10 Features by Mean |SHAP|:")
+    # ─── 3. Top 20 Feature Ranking Table ─────────────────────────────────
+    print(f"\n  Top 20 Features by Mean |SHAP|:")
     mean_abs_shap = np.abs(shap_values).mean(axis=0)
-    
+
     # Calculate correlation to find true direction of relationship
     correlations = []
     for i, col in enumerate(X_test_sc.columns):
@@ -78,10 +79,18 @@ def run_shap_analysis(model, X_test_sc, y_test, y_pred):
         "Correlation": correlations,
         "Interpretation": ["↑ Feature = ↑ Dropout Risk" if c > 0 else "↑ Feature = ↓ Dropout Risk"
                           for c in correlations]
-    }).sort_values("Mean |SHAP|", ascending=False)
+    }).sort_values("Mean |SHAP|", ascending=False).reset_index(drop=True)
 
-    top_10 = feature_importance.head(10)
-    print(top_10.to_string(index=False))
+    # Add rank column (1-indexed)
+    feature_importance.insert(0, "Rank", range(1, len(feature_importance) + 1))
+
+    top_20 = feature_importance.head(20)
+    print(top_20.to_string(index=False))
+
+    # Save top-20 ranking to CSV
+    csv_top20_path = os.path.join(OUTPUT_DIR, "shap_top20_ranking.csv")
+    top_20.to_csv(csv_top20_path, index=False)
+    print(f"\n  ✅ SHAP top-20 ranking saved to {csv_top20_path}")
 
     top_features = feature_importance["Feature"].tolist()
 

@@ -196,3 +196,66 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
     catat_waktu("Model Comparison", mulai)
 
     return comparison_df, models_dict, predictions_dict
+
+
+def plot_logistic_regression_confusion_matrix(models_dict, predictions_dict, y_test):
+    """
+    Generate and save the Logistic Regression confusion matrix as a PDF.
+
+    Args:
+        models_dict (dict): Dictionary of {name: trained_model} from compare_models.
+        predictions_dict (dict): Dictionary of {name: y_pred} from compare_models.
+        y_test: True test labels.
+
+    Returns:
+        cm (np.array): The 2x2 confusion matrix.
+    """
+    import seaborn as sns
+    from sklearn.metrics import confusion_matrix, classification_report
+
+    print_separator("LOGISTIC REGRESSION — CONFUSION MATRIX")
+
+    name = "Logistic Regression"
+    if name not in predictions_dict:
+        print(f"  ⚠️  '{name}' not found in predictions_dict. Skipping.")
+        return None
+
+    y_pred_lr = predictions_dict[name]
+
+    cm = confusion_matrix(y_test, y_pred_lr)
+    cm_norm = confusion_matrix(y_test, y_pred_lr, normalize="true")
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig.suptitle("Logistic Regression — Confusion Matrix", fontsize=15, fontweight="bold", y=1.01)
+
+    # Absolute counts
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Oranges", ax=axes[0],
+                xticklabels=["Graduate", "Dropout"],
+                yticklabels=["Graduate", "Dropout"])
+    axes[0].set_title("Confusion Matrix (Counts)", fontsize=13, fontweight="bold")
+    axes[0].set_xlabel("Predicted")
+    axes[0].set_ylabel("Actual")
+
+    # Normalized proportions
+    sns.heatmap(cm_norm, annot=True, fmt=".3f", cmap="Oranges", ax=axes[1],
+                xticklabels=["Graduate", "Dropout"],
+                yticklabels=["Graduate", "Dropout"])
+    axes[1].set_title("Confusion Matrix (Normalized)", fontsize=13, fontweight="bold")
+    axes[1].set_xlabel("Predicted")
+    axes[1].set_ylabel("Actual")
+
+    plt.tight_layout()
+    save_pdf(fig, "v3_confusion_matrix_lr.pdf")
+    plt.close(fig)
+
+    # Print breakdown
+    tn, fp, fn, tp = cm.ravel()
+    print(f"  TP (Correctly predicted Dropout)  : {tp}")
+    print(f"  TN (Correctly predicted Graduate) : {tn}")
+    print(f"  FP (Graduate predicted as Dropout): {fp}")
+    print(f"  FN (Dropout predicted as Graduate): {fn}")
+    print(f"\n  Classification Report:")
+    print(classification_report(y_test, y_pred_lr, target_names=["Graduate", "Dropout"]))
+    print(f"  📄 Saved: outputs/v3_confusion_matrix_lr.pdf")
+
+    return cm

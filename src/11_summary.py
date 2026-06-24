@@ -102,7 +102,8 @@ def print_research_summary(eval_results, comparison_df, mcnemar_results,
         "v3_threshold_optimization.pdf",
         "v3_perbandingan_metrik.pdf",
         "v3_precision_recall_curve.pdf",
-        "v3_confusion_matrix.pdf",
+        "v3_confusion_matrix.pdf           (XGBoost + SMOTE-ENN Proposed)",
+        "v3_confusion_matrix_lr.pdf        (Logistic Regression — Baseline)",
         "v3_shap_beeswarm.pdf",
         "v3_shap_global_bar.pdf",
         "v3_shap_dep_*.pdf (top 3 features)",
@@ -112,7 +113,9 @@ def print_research_summary(eval_results, comparison_df, mcnemar_results,
         "v3_smoteenn_confusion_matrices.pdf",
         "ablation_results.csv",
         "smoteenn_impact_metrics.csv",
-        "smoteenn_impact_analysis.md"
+        "smoteenn_impact_analysis.md",
+        "shap_top20_ranking.csv            (SHAP Top-20 Feature Ranking)",
+        "train_test_split_summary.csv      (Train-Test Split Final)",
     ]
     for f in pdf_files:
         print(f"    📄 {f}")

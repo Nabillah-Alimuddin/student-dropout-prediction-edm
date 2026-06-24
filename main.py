@@ -77,6 +77,28 @@ def main():
     split_and_scale = preprocessing.split_and_scale
     X_train, X_test, X_train_sc, X_test_sc, y_train, y_test, scaler = split_and_scale(X, y)
 
+    # ─── Save train-test split summary to CSV ───────────────────────────────
+    import pandas as pd
+    split_summary = pd.DataFrame([
+        {"Set": "Train",
+         "Samples": int(X_train.shape[0]),
+         "Features": int(X_train.shape[1]),
+         "Dropout (1)": int((y_train == 1).sum()),
+         "Graduate (0)": int((y_train == 0).sum()),
+         "Dropout %": round((y_train == 1).mean() * 100, 2),
+         "Graduate %": round((y_train == 0).mean() * 100, 2)},
+        {"Set": "Test",
+         "Samples": int(X_test.shape[0]),
+         "Features": int(X_test.shape[1]),
+         "Dropout (1)": int((y_test == 1).sum()),
+         "Graduate (0)": int((y_test == 0).sum()),
+         "Dropout %": round((y_test == 1).mean() * 100, 2),
+         "Graduate %": round((y_test == 0).mean() * 100, 2)},
+    ])
+    split_summary_path = os.path.join(OUTPUT_DIR, "train_test_split_summary.csv")
+    split_summary.to_csv(split_summary_path, index=False)
+    print(f"  📄 Train-test split summary saved to {split_summary_path}")
+
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 4: SMOTE-ENN
     # ═══════════════════════════════════════════════════════════════════════
@@ -121,6 +143,10 @@ def main():
         model, X_train_sc, y_train, X_test_sc, y_test,
         optimal_threshold=eval_results["optimal_threshold"]
     )
+
+    # ─── Confusion Matrix: Logistic Regression ───────────────────────────────
+    plot_logistic_regression_confusion_matrix = model_comparison.plot_logistic_regression_confusion_matrix
+    plot_logistic_regression_confusion_matrix(models_dict, predictions_dict, y_test)
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 9: McNemar Test
