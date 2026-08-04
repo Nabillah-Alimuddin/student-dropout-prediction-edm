@@ -1,20 +1,17 @@
 """
 main.py — Entry point for the Student Dropout Prediction Pipeline.
 
-Executes the full research pipeline in correct order:
-  Phase 0-1:  Data Loading & Binary Filtering & Target Encoding
-  Phase 2-3:  Stratified Split & Feature Scaling
-  Phase 4:    SMOTE-ENN Resampling
-  Phase 5:    Optuna Hyperparameter Optimization
-  Phase 6:    Final Model Training
-  Phase 7:    Model Evaluation (Metrics, Learning Curve, ROC, Threshold)
-  Phase 8:    Baseline Model Comparison
-  Phase 9:    McNemar Statistical Test
-  Phase 10:   Confusion Matrix & Error Analysis
-  Phase 11:   SHAP Explainability Analysis
-  Phase 12:   10-Fold Cross-Validation
-  Phase 13:   Computational Efficiency Summary
-  Phase 14:   Research Summary
+Executes the full research pipeline in 10 sequential phases:
+  Phase 1:  Data Loading & Preparation
+  Phase 2:  Preprocessing & Scaling
+  Phase 3:  SMOTE-ENN Resampling
+  Phase 4:  Optuna Hyperparameter Tuning
+  Phase 5:  Stacking Ensemble Training
+  Phase 6:  Model Evaluation & Threshold Optimization
+  Phase 7:  Fair Baseline Model Comparison
+  Phase 8:  SHAP Explainability Analysis
+  Phase 9:  10-Fold Stratified Cross-Validation
+  Phase 10: Final Research Summary
 
 Usage:
     python main.py
@@ -25,6 +22,8 @@ import os
 import time
 import warnings
 import numpy as np
+import pandas as pd
+import importlib
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
@@ -43,18 +42,18 @@ import matplotlib
 matplotlib.use("Agg")
 
 from src.config import SEED, OUTPUT_DIR, MODEL_DIR
-
 from src.utils import reset_waktu_log, print_separator
 
+
 def main():
-    """Execute the full student dropout prediction pipeline."""
+    """Execute the full student dropout prediction pipeline in 10 clean phases."""
 
     pipeline_start = time.time()
     reset_waktu_log()
 
     print("=" * 70)
     print("  STUDENT DROPOUT PREDICTION PIPELINE")
-    print("  XGBoost + SMOTE-ENN + SHAP Explainability")
+    print("  Stacking (XGB+LGB+CB+LR) + SMOTE-ENN + SHAP Explainability")
     print("  Version: V3 (Binary Classification — Final)")
     print("=" * 70)
     print(f"\n  Output directory: {OUTPUT_DIR}")
@@ -62,23 +61,20 @@ def main():
     print(f"  Random seed:      {SEED}")
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 0-1: Data Loading & Preparation
+    # Phase 1: Data Loading & Preparation
     # ═══════════════════════════════════════════════════════════════════════
-    import importlib
     data_preparation = importlib.import_module("src.01_data_preparation")
     load_and_prepare_data = data_preparation.load_and_prepare_data
     X, y, df = load_and_prepare_data()
 
     # ═══════════════════════════════════════════════════════════════════════
-    # ═══════════════════════════════════════════════════════════════════════
-    # Phase 2-3: Preprocessing (Split + Scaling)
+    # Phase 2: Preprocessing (Split & Scaling)
     # ═══════════════════════════════════════════════════════════════════════
     preprocessing = importlib.import_module("src.02_preprocessing")
     split_and_scale = preprocessing.split_and_scale
     X_train, X_test, X_train_sc, X_test_sc, y_train, y_test, scaler = split_and_scale(X, y)
 
-    # ─── Save train-test split summary to CSV ───────────────────────────────
-    import pandas as pd
+    # Save train-test split summary CSV
     split_summary = pd.DataFrame([
         {"Set": "Train",
          "Samples": int(X_train.shape[0]),
@@ -100,63 +96,65 @@ def main():
     print(f"  📄 Train-test split summary saved to {split_summary_path}")
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 4: SMOTE-ENN
+    # Phase 3: SMOTE-ENN Resampling
     # ═══════════════════════════════════════════════════════════════════════
     smoteenn = importlib.import_module("src.03_smoteenn")
     apply_smoteenn = smoteenn.apply_smoteenn
     X_res, y_res = apply_smoteenn(X_train_sc, y_train)
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 5: Optuna Tuning
+    # Phase 4: Optuna Hyperparameter Optimization
     # ═══════════════════════════════════════════════════════════════════════
     optuna_tuning = importlib.import_module("src.04_optuna_tuning")
     run_optuna_tuning = optuna_tuning.run_optuna_tuning
-    # Pass original unscaled training data — StandardScaler and SMOTE-ENN are 
-    # applied inside each CV fold via ImbPipeline, preventing scaling and SMOTE leakage.
-    best_params, study = run_optuna_tuning(X_train, y_train)
+    run_optuna_tuning_lgbm = optuna_tuning.run_optuna_tuning_lgbm
+    run_optuna_tuning_catboost = optuna_tuning.run_optuna_tuning_catboost
+
+    best_params_xgb, study_xgb = run_optuna_tuning(X_train, y_train)
+    best_params_lgbm, study_lgbm = run_optuna_tuning_lgbm(X_train, y_train)
+    best_params_cb, study_cb = run_optuna_tuning_catboost(X_train, y_train)
+
+    best_params_stacking = {
+        "xgb": best_params_xgb,
+        "lgb": best_params_lgbm,
+        "cat": best_params_cb
+    }
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 6: Model Training
+    # Phase 5: Model Training (Stacking Ensemble)
     # ═══════════════════════════════════════════════════════════════════════
     training = importlib.import_module("src.05_training")
-    train_final_model = training.train_final_model
-    # train_final_model menerima data resampled 100%:
-    model = train_final_model(X_res, y_res, best_params)
+    train_final_model_stacking = training.train_final_model_stacking
+    model = train_final_model_stacking(X_res, y_res, best_params_xgb, best_params_lgbm, best_params_cb)
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 7 + 10: Evaluation + Confusion Matrix
+    # Phase 6: Model Evaluation & Threshold Optimization
     # ═══════════════════════════════════════════════════════════════════════
     evaluation = importlib.import_module("src.06_evaluation")
     evaluate_model = evaluation.evaluate_model
-    # X_train (unscaled) passed to perform leakage-free OOF threshold tuning
     eval_results = evaluate_model(
         model, X_train, y_train, X_test_sc, y_test, X_res, y_res
     )
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 8: Model Comparison
+    # Phase 7: Fair Baseline Model Comparison
     # ═══════════════════════════════════════════════════════════════════════
     model_comparison = importlib.import_module("src.07_model_comparison")
     compare_models = model_comparison.compare_models
-    # Pass the optimal threshold found for the proposed model
     comparison_df, models_dict, predictions_dict = compare_models(
         model, X_train_sc, y_train, X_test_sc, y_test,
-        optimal_threshold=eval_results["optimal_threshold"]
+        optimal_threshold=eval_results["optimal_threshold"],
+        X_res=X_res, y_res=y_res,
+        best_params_xgb=best_params_xgb,
+        best_params_lgbm=best_params_lgbm,
+        best_params_cb=best_params_cb
     )
 
-    # ─── Confusion Matrix: Logistic Regression ───────────────────────────────
     plot_logistic_regression_confusion_matrix = model_comparison.plot_logistic_regression_confusion_matrix
     plot_logistic_regression_confusion_matrix(models_dict, predictions_dict, y_test)
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 9: McNemar Test
-    # ═══════════════════════════════════════════════════════════════════════
-    mcnemar = importlib.import_module("src.08_mcnemar")
-    run_mcnemar_tests = mcnemar.run_mcnemar_tests
-    mcnemar_results = run_mcnemar_tests(y_test, predictions_dict)
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # Phase 11: SHAP Analysis
+    # Phase 8: SHAP Explainability Analysis
     # ═══════════════════════════════════════════════════════════════════════
     shap_analysis = importlib.import_module("src.09_shap_analysis")
     run_shap_analysis = shap_analysis.run_shap_analysis
@@ -165,55 +163,23 @@ def main():
     )
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 12: Cross-Validation
+    # Phase 9: 10-Fold Stratified Cross-Validation
     # ═══════════════════════════════════════════════════════════════════════
     cross_validation = importlib.import_module("src.10_cross_validation")
     run_cross_validation = cross_validation.run_cross_validation
-    # Pass original unscaled training data — StandardScaler and SMOTE-ENN are 
-    # applied inside each CV fold via ImbPipeline for a completely leakage-free estimate.
-    cv_results = run_cross_validation(X_train, y_train, best_params)
+    cv_results = run_cross_validation(X_train, y_train, best_params_stacking)
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 12.5: Ablation Study
-    # ═══════════════════════════════════════════════════════════════════════
-    ablation_study = importlib.import_module("src.12_ablation_study")
-    run_ablation_study = ablation_study.run_ablation_study
-    ablation_df = run_ablation_study(X_train, y_train, X_test, y_test, scaler, best_params)
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # Phase 12.6: SMOTE-ENN Impact Analysis
-    # ═══════════════════════════════════════════════════════════════════════
-    smoteenn_analysis = importlib.import_module("src.13_smoteenn_analysis")
-    run_smoteenn_analysis = smoteenn_analysis.run_smoteenn_analysis
-    # ─── Threshold Sensitivity Analysis (Recall‑first Early‑Warning) ────────────────────────
-    run_threshold_analysis = smoteenn_analysis.threshold_sensitivity_analysis
-    threshold_df, optimal_thr = run_threshold_analysis(model, X_test_sc, y_test)
-    # Save threshold analysis results
-    threshold_df.to_csv(f"{OUTPUT_DIR}/threshold_sensitivity_analysis.csv", index=False)
-    print(f"  📄 Threshold analysis CSV saved to {OUTPUT_DIR}/threshold_sensitivity_analysis.csv")
-    if optimal_thr is not None:
-        print(f"  🎯 Optimal threshold (Recall ≥ 0.90): {optimal_thr}")
-    else:
-        print("  ⚠️ No threshold achieved Recall ≥ 0.90")
-    
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # Phase 13: Timing Summary
+    # Phase 10: Final Research Summary
     # ═══════════════════════════════════════════════════════════════════════
     summary = importlib.import_module("src.11_summary")
-    print_timing_summary = summary.print_timing_summary
     print_research_summary = summary.print_research_summary
-    timing_df = print_timing_summary()
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # Phase 14: Research Summary
-    # ═══════════════════════════════════════════════════════════════════════
     print_research_summary(
-        eval_results, comparison_df, mcnemar_results,
+        eval_results, comparison_df,
         cv_results, top_features
     )
 
-    # ─── Total pipeline time ──────────────────────────────────────────────
+    # ─── Total pipeline execution time ────────────────────────────────────
     total_time = time.time() - pipeline_start
     print(f"\n  🏁 Total pipeline execution time: {total_time:.2f}s "
           f"({total_time/60:.2f}min)")

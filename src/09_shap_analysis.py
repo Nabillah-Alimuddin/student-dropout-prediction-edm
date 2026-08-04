@@ -34,7 +34,14 @@ def run_shap_analysis(model, X_test_sc, y_test, y_pred):
     mulai = time.time()
 
     # ─── Compute SHAP values ──────────────────────────────────────────────
-    explainer = shap.TreeExplainer(model)
+    is_stacking = hasattr(model, 'base_models')
+    if is_stacking:
+        target_model = model.base_models['xgb']
+        print("  [SHAP] Running SHAP analysis on XGBoost base learner inside Stacking Ensemble.")
+    else:
+        target_model = model
+
+    explainer = shap.TreeExplainer(target_model)
     shap_values = explainer.shap_values(X_test_sc)
 
     print(f"  SHAP values computed for {X_test_sc.shape[0]} test samples.")
@@ -110,6 +117,11 @@ def run_shap_analysis(model, X_test_sc, y_test, y_pred):
     y_test_arr = np.array(y_test)
     y_pred_arr = np.array(y_pred)
 
+    expected_val = explainer.expected_value
+    # expected_value can be list or scalar depending on shap/xgb versions
+    if isinstance(expected_val, (list, np.ndarray)):
+        expected_val = expected_val[0]
+
     # Find correctly predicted Dropout
     dropout_indices = np.where((y_test_arr == 1) & (y_pred_arr == 1))[0]
     if len(dropout_indices) > 0:
@@ -117,7 +129,7 @@ def run_shap_analysis(model, X_test_sc, y_test, y_pred):
         fig, ax = plt.subplots(figsize=(12, 8))
         shap_explanation = shap.Explanation(
             values=shap_values[idx],
-            base_values=explainer.expected_value,
+            base_values=expected_val,
             data=X_test_sc.iloc[idx].values,
             feature_names=X_test_sc.columns.tolist()
         )
@@ -137,7 +149,7 @@ def run_shap_analysis(model, X_test_sc, y_test, y_pred):
         fig, ax = plt.subplots(figsize=(12, 8))
         shap_explanation = shap.Explanation(
             values=shap_values[idx],
-            base_values=explainer.expected_value,
+            base_values=expected_val,
             data=X_test_sc.iloc[idx].values,
             feature_names=X_test_sc.columns.tolist()
         )

@@ -192,15 +192,20 @@ def run_ablation_study(X_train, y_train, X_test, y_test, scaler, best_params):
         # Fit model on config's training data
         model.fit(X_tr, y_tr, verbose=False)
 
-        # Predict probabilities on test
-        y_proba = model.predict_proba(X_test_sc)[:, 1]
-
         # Determine threshold
-        if cfg["optimize_thresh"]:
+        if cfg["optimize_thresh"] and cfg["pipeline_for_thresh"] is not None:
+            # Find optimal threshold via OOF on ORIGINAL unscaled data
             opt_t = optimize_threshold(cfg["pipeline_for_thresh"], X_train, y_train)
             print(f"    Optimal OOF threshold: {opt_t:.2f}")
+            
+            # IMPORTANT: refit the pipeline on full training data and use IT
+            # for prediction — ensures consistency between threshold search
+            # and final predictions
+            cfg["pipeline_for_thresh"].fit(X_train, y_train)
+            y_proba = cfg["pipeline_for_thresh"].predict_proba(X_test)[:, 1]
         else:
             opt_t = 0.50
+            y_proba = model.predict_proba(X_test_sc)[:, 1]
 
         # Predictions at threshold
         y_pred = (y_proba >= opt_t).astype(int)

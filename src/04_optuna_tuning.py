@@ -149,3 +149,138 @@ def run_optuna_tuning(X_train, y_train):
     catat_waktu("Optuna Tuning", mulai)
 
     return best_params, study
+
+
+def run_optuna_tuning_lgbm(X_train, y_train):
+    """
+    Run Optuna hyperparameter optimization for LightGBM.
+    """
+    from lightgbm import LGBMClassifier
+    print_separator("PHASE 5 (LGBM): OPTUNA HYPERPARAMETER OPTIMIZATION FOR LIGHTGBM")
+    mulai = time.time()
+
+    def objective(trial):
+        params = {
+            "n_estimators": trial.suggest_int("n_estimators", 100, 700),
+            "max_depth": trial.suggest_int("max_depth", 3, 8),
+            "learning_rate": trial.suggest_float("learning_rate", 0.005, 0.3, log=True),
+            "num_leaves": trial.suggest_int("num_leaves", 15, 255),
+            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.4, 1.0),
+            "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 30.0, log=True),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 30.0, log=True),
+            "random_state": SEED,
+            "verbosity": -1
+        }
+
+        pipe = ImbPipeline([
+            ('scaler', StandardScaler()),
+            ('smote', SMOTE(
+                k_neighbors=SMOTE_K_NEIGHBORS,
+                random_state=SEED,
+                sampling_strategy=SMOTE_TARGET_RATIO
+            )),
+            ('enn', EditedNearestNeighbours(
+                n_neighbors=ENN_N_NEIGHBORS,
+                kind_sel=ENN_KIND_SEL
+            )),
+            ('clf', LGBMClassifier(**params)),
+        ])
+
+        skf = StratifiedKFold(
+            n_splits=OPTUNA_CV_FOLDS, shuffle=True, random_state=SEED
+        )
+
+        f1_scorer = make_scorer(f1_score, pos_label=1)
+        scores = cross_val_score(
+            pipe, X_train, y_train, cv=skf, scoring=f1_scorer, n_jobs=-1
+        )
+
+        return scores.mean()
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    sampler = optuna.samplers.TPESampler(seed=SEED)
+    study = optuna.create_study(direction="maximize", sampler=sampler)
+
+    # We use a lower number of trials or custom config for fast execution if needed
+    from src.config import LGBM_N_TRIALS, LGBM_TIMEOUT
+    print(f"  Running {LGBM_N_TRIALS} trials (timeout: {LGBM_TIMEOUT}s)...")
+
+    study.optimize(objective, n_trials=LGBM_N_TRIALS, timeout=LGBM_TIMEOUT, show_progress_bar=True)
+
+    best_params = study.best_params.copy()
+    best_params.update({
+        "random_state": SEED,
+        "verbosity": -1
+    })
+
+    print(f"\n  Best trial: #{study.best_trial.number}")
+    print(f"  Best F1-Score (CV, leakage-free): {study.best_value:.6f}")
+    catat_waktu("Optuna Tuning LGBM", mulai)
+    return best_params, study
+
+
+def run_optuna_tuning_catboost(X_train, y_train):
+    """
+    Run Optuna hyperparameter optimization for CatBoost.
+    """
+    from catboost import CatBoostClassifier
+    print_separator("PHASE 5 (CatBoost): OPTUNA HYPERPARAMETER OPTIMIZATION FOR CATBOOST")
+    mulai = time.time()
+
+    def objective(trial):
+        params = {
+            "iterations": trial.suggest_int("iterations", 100, 700),
+            "depth": trial.suggest_int("depth", 3, 8),
+            "learning_rate": trial.suggest_float("learning_rate", 0.005, 0.3, log=True),
+            "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1.0, 10.0),
+            "random_seed": SEED,
+            "verbose": False
+        }
+
+        pipe = ImbPipeline([
+            ('scaler', StandardScaler()),
+            ('smote', SMOTE(
+                k_neighbors=SMOTE_K_NEIGHBORS,
+                random_state=SEED,
+                sampling_strategy=SMOTE_TARGET_RATIO
+            )),
+            ('enn', EditedNearestNeighbours(
+                n_neighbors=ENN_N_NEIGHBORS,
+                kind_sel=ENN_KIND_SEL
+            )),
+            ('clf', CatBoostClassifier(**params)),
+        ])
+
+        skf = StratifiedKFold(
+            n_splits=OPTUNA_CV_FOLDS, shuffle=True, random_state=SEED
+        )
+
+        f1_scorer = make_scorer(f1_score, pos_label=1)
+        scores = cross_val_score(
+            pipe, X_train, y_train, cv=skf, scoring=f1_scorer, n_jobs=-1
+        )
+
+        return scores.mean()
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    sampler = optuna.samplers.TPESampler(seed=SEED)
+    study = optuna.create_study(direction="maximize", sampler=sampler)
+
+    from src.config import CATBOOST_N_TRIALS, CATBOOST_TIMEOUT
+    print(f"  Running {CATBOOST_N_TRIALS} trials (timeout: {CATBOOST_TIMEOUT}s)...")
+
+    study.optimize(objective, n_trials=CATBOOST_N_TRIALS, timeout=CATBOOST_TIMEOUT, show_progress_bar=True)
+
+    best_params = study.best_params.copy()
+    best_params.update({
+        "random_seed": SEED,
+        "verbose": False
+    })
+
+    print(f"\n  Best trial: #{study.best_trial.number}")
+    print(f"  Best F1-Score (CV, leakage-free): {study.best_value:.6f}")
+    catat_waktu("Optuna Tuning CatBoost", mulai)
+    return best_params, study
+

@@ -2,20 +2,19 @@
 10_cross_validation.py — Phase 12: 10-Fold Stratified Cross-Validation.
 
 Robustness validation using a leakage-free approach:
-- CV is applied to the ORIGINAL scaled training set (X_train_sc, y_train).
-- SMOTE-ENN is wrapped inside an ImbPipeline and executed WITHIN each
+- CV is applied to the ORIGINAL unscaled training set (X_train, y_train).
+- StandardScaler and SMOTE-ENN are wrapped inside an ImbPipeline and executed WITHIN each
   training fold — synthetic samples NEVER appear in validation folds.
-- Reports F1-Dropout, AUC-ROC, Balanced Accuracy, MCC per fold.
+- Reports F1-Dropout, AUC-ROC, Balanced Accuracy, MCC per fold cleanly without NaN.
 """
 
 import time
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold, cross_validate
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
-    f1_score, roc_auc_score, balanced_accuracy_score, matthews_corrcoef,
-    make_scorer
+    f1_score, roc_auc_score, balanced_accuracy_score, matthews_corrcoef
 )
 from xgboost import XGBClassifier
 from imblearn.pipeline import Pipeline as ImbPipeline
@@ -31,8 +30,7 @@ def run_cross_validation(X_train, y_train, best_params):
     Perform 10-fold stratified cross-validation on the ORIGINAL training set.
 
     StandardScaler and SMOTE-ENN are applied INSIDE each fold via ImbPipeline, preventing
-    synthetic samples or scaled values from leaking into validation folds. This is the
-    correct, publishable approach for robustness validation.
+    synthetic samples or scaled values from leaking into validation folds.
 
     Args:
         X_train (pd.DataFrame): Original training features (NOT scaled/resampled).
@@ -49,6 +47,18 @@ def run_cross_validation(X_train, y_train, best_params):
     print(f"  StandardScaler & SMOTE-ENN applied INSIDE each fold via ImbPipeline (leakage-free).")
 
     # ─── Build leakage-free pipeline ─────────────────────────────────────
+    is_stacking = ("xgb_params" in best_params) or ("xgb" in best_params and "lgb" in best_params)
+    
+    if is_stacking:
+        from src.stacking_training import StackingEnsemble
+        xgb_p = best_params.get("xgb", best_params.get("xgb_params", best_params))
+        lgb_p = best_params.get("lgb", best_params.get("lgbm_params", {}))
+        cat_p = best_params.get("cat", best_params.get("catboost_params", {}))
+        print("  [CV] Using StackingEnsemble (XGB+LGB+CB+LR) inside ImbPipeline.")
+        clf_cv = StackingEnsemble(xgb_p, lgb_p, cat_p, seed=SEED)
+    else:
+        clf_cv = XGBClassifier(**best_params)
+
     pipe = ImbPipeline([
         ('scaler', StandardScaler()),
         ('smote', SMOTE(
@@ -60,38 +70,36 @@ def run_cross_validation(X_train, y_train, best_params):
             n_neighbors=ENN_N_NEIGHBORS,
             kind_sel=ENN_KIND_SEL
         )),
-        ('clf', XGBClassifier(**best_params)),
+        ('clf', clf_cv),
     ])
 
     skf = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=SEED)
-
-    scoring = {
-        'f1':               make_scorer(f1_score, pos_label=1),
-        'roc_auc':          'roc_auc',
-        'balanced_accuracy': 'balanced_accuracy',
-        'mcc':              make_scorer(matthews_corrcoef),
-    }
-
-    raw = cross_validate(
-        pipe, X_train, y_train,
-        cv=skf, scoring=scoring,
-        return_train_score=False, n_jobs=-1
-    )
-
     fold_results = []
-    for fold in range(CV_FOLDS):
+
+    for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train)):
+        X_tr_f, X_val_f = X_train.iloc[train_idx], X_train.iloc[val_idx]
+        y_tr_f, y_val_f = y_train.iloc[train_idx], y_train.iloc[val_idx]
+
+        # Fit leakage-free pipeline on fold training data
+        pipe.fit(X_tr_f, y_tr_f)
+
+        y_val_pred = pipe.predict(X_val_f)
+        y_val_proba = pipe.predict_proba(X_val_f)[:, 1]
+
+        f1 = f1_score(y_val_f, y_val_pred, pos_label=1, zero_division=0)
+        auc = roc_auc_score(y_val_f, y_val_proba)
+        ba = balanced_accuracy_score(y_val_f, y_val_pred)
+        mcc = matthews_corrcoef(y_val_f, y_val_pred)
+
         fold_metrics = {
             "Fold":         fold + 1,
-            "F1-Dropout":   raw['test_f1'][fold],
-            "AUC-ROC":      raw['test_roc_auc'][fold],
-            "Balanced Acc": raw['test_balanced_accuracy'][fold],
-            "MCC":          raw['test_mcc'][fold],
+            "F1-Dropout":   f1,
+            "AUC-ROC":      auc,
+            "Balanced Acc": ba,
+            "MCC":          mcc,
         }
         fold_results.append(fold_metrics)
-        print(f"  Fold {fold+1:2d}: F1={fold_metrics['F1-Dropout']:.4f}  "
-              f"AUC={fold_metrics['AUC-ROC']:.4f}  "
-              f"BA={fold_metrics['Balanced Acc']:.4f}  "
-              f"MCC={fold_metrics['MCC']:.4f}")
+        print(f"  Fold {fold+1:2d}: F1={f1:.4f}  AUC={auc:.4f}  BA={ba:.4f}  MCC={mcc:.4f}")
 
     cv_results = pd.DataFrame(fold_results)
 

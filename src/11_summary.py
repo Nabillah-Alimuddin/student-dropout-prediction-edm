@@ -1,79 +1,34 @@
 """
-11_summary.py — Phase 13 & 14: Computational Efficiency + Research Summary.
+11_summary.py — Phase 14: Final Research Summary.
 
-Produces timing summary table and answers research questions RQ1 and RQ2.
+Prints a comprehensive summary comparing Proposed Stacking Ensemble against
+ALL benchmark models (Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost)
+under identical experimental conditions.
 """
 
 import time
 import numpy as np
 import pandas as pd
 
-from src.utils import get_waktu_log, catat_waktu, print_separator
+from src.utils import print_separator
 
 
-def print_timing_summary():
+def print_research_summary(eval_results, comparison_df, cv_results, top_features):
     """
-    Phase 13: Print computational efficiency summary.
-
-    Returns:
-        timing_df (pd.DataFrame): Timing log for all phases.
-    """
-    print_separator("PHASE 13: COMPUTATIONAL EFFICIENCY")
-
-    waktu_log = get_waktu_log()
-    if not waktu_log:
-        print("  No timing data recorded.")
-        return pd.DataFrame()
-
-    timing_df = pd.DataFrame(waktu_log)
-
-    print(f"\n  {'Phase':<30} {'Seconds':>10} {'Minutes':>10}")
-    print(f"  {'─'*52}")
-    for _, row in timing_df.iterrows():
-        print(f"  {row['Fase']:<30} {row['Detik']:>10.2f} {row['Menit']:>10.4f}")
-
-    total_sec = timing_df["Detik"].sum()
-    total_min = timing_df["Menit"].sum()
-    print(f"  {'─'*52}")
-    print(f"  {'TOTAL':<30} {total_sec:>10.2f} {total_min:>10.4f}")
-
-    return timing_df
-
-
-def print_research_summary(eval_results, comparison_df, mcnemar_results,
-                           cv_results, top_features):
-    """
-    Phase 14: Research summary answering RQ1 and RQ2.
+    Phase 14: Comprehensive Research Summary comparing Proposed Stacking against ALL baselines.
 
     Args:
         eval_results (dict): Evaluation metrics and results.
-        comparison_df (pd.DataFrame): Model comparison table.
-        mcnemar_results (pd.DataFrame): McNemar test results.
+        comparison_df (pd.DataFrame): Model comparison table across all models.
         cv_results (pd.DataFrame): Cross-validation results.
         top_features (list): Top SHAP features.
     """
-    print_separator("PHASE 14: RESEARCH SUMMARY")
+    print_separator("PHASE 14: RESEARCH SUMMARY & OBJECTIVE COMPARISON")
 
-    # ─── RQ1: Can XGBoost + SMOTE-ENN outperform baselines? ──────────────
-    print(f"\n  ═══ RQ1: Performance Comparison ═══")
-    proposed = comparison_df[comparison_df["Model"] == "XGBoost + SMOTE-ENN (Proposed)"]
-    baseline_xgb = comparison_df[comparison_df["Model"] == "XGBoost (Baseline)"]
-
-    if not proposed.empty and not baseline_xgb.empty:
-        for metric in ["F1-Dropout", "Recall", "Precision", "AUC-ROC", "Balanced Acc"]:
-            prop_val = proposed[metric].values[0]
-            base_val = baseline_xgb[metric].values[0]
-            delta = prop_val - base_val
-            direction = "↑" if delta > 0 else "↓" if delta < 0 else "="
-            print(f"    {metric:<15}: Proposed={prop_val:.4f}  "
-                  f"Baseline={base_val:.4f}  Δ={delta:+.4f} {direction}")
-
-    # ─── RQ2: Statistical significance ────────────────────────────────────
-    print(f"\n  ═══ RQ2: Statistical Significance ═══")
-    if mcnemar_results is not None and not mcnemar_results.empty:
-        for _, row in mcnemar_results.iterrows():
-            print(f"    {row['Comparison']}: p={row['p-value']:.6f} → "
-                  f"{row[mcnemar_results.columns[-1]]}")
+    # ─── Full Model Comparison Table ─────────────────────────────────────
+    print(f"\n  ═══ Fair Model Benchmark Comparison (SMOTE-ENN + Threshold Opt) ═══")
+    if comparison_df is not None and not comparison_df.empty:
+        print(comparison_df.to_string(index=False))
 
     # ─── Optimal threshold ────────────────────────────────────────────────
     if "optimal_threshold" in eval_results:
@@ -82,42 +37,15 @@ def print_research_summary(eval_results, comparison_df, mcnemar_results,
         print(f"    F1 at optimal: {eval_results['optimal_f1']:.4f}")
 
     # ─── Top SHAP features ───────────────────────────────────────────────
-    print(f"\n  ═══ Top 5 SHAP Features ═══")
+    print(f"\n  ═══ Top 5 SHAP Features (Proposed Model) ═══")
     for i, feat in enumerate(top_features[:5], 1):
         print(f"    {i}. {feat}")
 
     # ─── Cross-validation robustness ──────────────────────────────────────
     if cv_results is not None and not cv_results.empty:
-        print(f"\n  ═══ Cross-Validation Robustness ═══")
+        print(f"\n  ═══ 10-Fold Cross-Validation Robustness (Proposed Model) ═══")
         for col in ["F1-Dropout", "AUC-ROC", "Balanced Acc", "MCC"]:
             vals = cv_results[col]
-            print(f"    {col}: {vals.mean():.4f} ± {vals.std():.4f}")
+            print(f"    {col:<15}: {vals.mean():.4f} ± {vals.std():.4f} (Min: {vals.min():.4f}, Max: {vals.max():.4f})")
 
-    # ─── Output files ────────────────────────────────────────────────────
-    print(f"\n  ═══ Generated PDF & Analysis Outputs ═══")
-    pdf_files = [
-        "v3_distribusi_binary.pdf",
-        "v3_learning_curve.pdf",
-        "v3_roc_curve.pdf",
-        "v3_threshold_optimization.pdf",
-        "v3_perbandingan_metrik.pdf",
-        "v3_precision_recall_curve.pdf",
-        "v3_confusion_matrix.pdf           (XGBoost + SMOTE-ENN Proposed)",
-        "v3_confusion_matrix_lr.pdf        (Logistic Regression — Baseline)",
-        "v3_shap_beeswarm.pdf",
-        "v3_shap_global_bar.pdf",
-        "v3_shap_dep_*.pdf (top 3 features)",
-        "v3_shap_waterfall_dropout.pdf",
-        "v3_shap_waterfall_graduate.pdf",
-        "v3_ablation_study.pdf",
-        "v3_smoteenn_confusion_matrices.pdf",
-        "ablation_results.csv",
-        "smoteenn_impact_metrics.csv",
-        "smoteenn_impact_analysis.md",
-        "shap_top20_ranking.csv            (SHAP Top-20 Feature Ranking)",
-        "train_test_split_summary.csv      (Train-Test Split Final)",
-    ]
-    for f in pdf_files:
-        print(f"    📄 {f}")
-
-    print(f"\n  ✅ Pipeline complete.")
+    print(f"\n  ✅ Pipeline execution successfully completed.")

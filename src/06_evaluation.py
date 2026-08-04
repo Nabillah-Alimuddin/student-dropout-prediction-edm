@@ -80,6 +80,20 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
         
         from sklearn.model_selection import StratifiedKFold, cross_val_predict
         
+        # Check if model is StackingEnsemble or has base_models
+        is_stacking = hasattr(model, 'base_models')
+        
+        if is_stacking:
+            from src.stacking_training import StackingEnsemble
+            clf_instance = StackingEnsemble(
+                model.xgb_params,
+                model.lgbm_params,
+                model.catboost_params,
+                seed=SEED
+            )
+        else:
+            clf_instance = type(model)(**model.get_params())
+
         pipe_cv = ImbPipeline([
             ('scaler', StandardScaler()),
             ('smote', SMOTE(
@@ -91,13 +105,15 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
                 n_neighbors=ENN_N_NEIGHBORS,
                 kind_sel=ENN_KIND_SEL
             )),
-            ('clf', type(model)(**model.get_params())),
+            ('clf', clf_instance),
         ])
         
         skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
         
+        # n_jobs=1 for stacking to avoid nested parallelism
+        cv_n_jobs = 1 if is_stacking else -1
         y_oof_proba = cross_val_predict(
-            pipe_cv, X_train, y_train, cv=skf, method="predict_proba", n_jobs=-1
+            pipe_cv, X_train, y_train, cv=skf, method="predict_proba", n_jobs=cv_n_jobs
         )[:, 1]
         
         sweep_proba = y_oof_proba
@@ -200,7 +216,21 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
 
     f1_scorer = make_scorer(f1_score, pos_label=1)
 
-    # ── ImbPipeline: scaling + SMOTE-ENN inside fold CV — leakage-free ──
+    # ─── ImbPipeline: scaling + SMOTE-ENN inside fold CV — leakage-free ──
+    is_stacking = hasattr(model, 'base_models')
+    if is_stacking:
+        from src.stacking_training import StackingEnsemble
+        clf_instance_lc = StackingEnsemble(
+            model.xgb_params,
+            model.lgbm_params,
+            model.catboost_params,
+            seed=SEED
+        )
+        model_name = "Stacking (XGB+LGB+CB+LR)"
+    else:
+        clf_instance_lc = type(model)(**model.get_params())
+        model_name = "XGBoost"
+
     lc_pipe = ImbPipeline([
         ('scaler', StandardScaler()),
         ('smote', SMOTE(
@@ -212,18 +242,19 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
             n_neighbors=ENN_N_NEIGHBORS,
             kind_sel=ENN_KIND_SEL
         )),
-        ('clf', type(model)(**model.get_params())),
+        ('clf', clf_instance_lc),
     ])
 
     print(f"  Using ImbPipeline (with StandardScaler) on original X_train to prevent leakage.")
 
+    lc_n_jobs = 1 if is_stacking else -1
     train_sizes, train_scores, val_scores = learning_curve(
         lc_pipe, X_train, y_train,
         cv=OPTUNA_CV_FOLDS,
         scoring=f1_scorer,
         train_sizes=np.linspace(0.1, 1.0, 10),
         random_state=SEED,
-        n_jobs=-1
+        n_jobs=lc_n_jobs
     )
 
     train_mean = train_scores.mean(axis=1)
@@ -238,7 +269,7 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
     ax.plot(train_sizes, val_mean, "o-", color="orange", label="Validation F1")
     ax.set_xlabel("Training Set Size", fontsize=12)
     ax.set_ylabel("F1-Score", fontsize=12)
-    ax.set_title("Learning Curve — XGBoost + SMOTE-ENN", fontsize=14, fontweight="bold")
+    ax.set_title(f"Learning Curve — {model_name} + SMOTE-ENN", fontsize=14, fontweight="bold")
     ax.legend(loc="lower right", fontsize=11)
     ax.grid(True, alpha=0.3)
 
@@ -269,7 +300,7 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
     roc_auc = auc(fpr, tpr)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(fpr, tpr, color="#e74c3c", lw=2, label=f"XGBoost + SMOTE-ENN (AUC = {roc_auc:.4f})")
+    ax.plot(fpr, tpr, color="#e74c3c", lw=2, label=f"{model_name} + SMOTE-ENN (AUC = {roc_auc:.4f})")
     ax.plot([0, 1], [0, 1], color="gray", linestyle="--", lw=1, label="Random Baseline")
     ax.set_xlabel("False Positive Rate", fontsize=12)
     ax.set_ylabel("True Positive Rate", fontsize=12)

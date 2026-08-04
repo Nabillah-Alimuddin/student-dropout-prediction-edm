@@ -45,3 +45,22 @@ def train_final_model(X_res, y_res, best_params):
     catat_waktu("Model Training", mulai)
 
     return model
+
+
+def train_final_model_stacking(X_res, y_res, best_xgb, best_lgbm, best_cb):
+    """
+    Train stacking ensemble as final model and save it.
+    """
+    print_separator("PHASE 6: FINAL MODEL TRAINING (STACKING)")
+    mulai = time.time()
+    
+    from src.stacking_training import train_stacking_ensemble
+    model = train_stacking_ensemble(X_res, y_res, best_xgb, best_lgbm, best_cb)
+    
+    # Save model
+    joblib.dump(model, MODEL_PATH)
+    print(f"  💾 Stacking Model saved: {MODEL_PATH}")
+    
+    catat_waktu("Stacking Model Training", mulai)
+    return model
+

@@ -29,7 +29,29 @@ def run_mcnemar_tests(y_test, predictions_dict):
     print_separator("PHASE 9: McNEMAR STATISTICAL SIGNIFICANCE TEST")
     mulai = time.time()
 
-    proposed_name = "XGBoost + SMOTE-ENN (Proposed)"
+    # Find the proposed model name dynamically
+    proposed_candidates = [
+        "Stacking (XGB+LGB+CB) + SMOTE-ENN",
+        "XGBoost + SMOTE-ENN (Proposed)",
+        "XGBoost + SMOTE-ENN"
+    ]
+    proposed_name = None
+    for cand in proposed_candidates:
+        if cand in predictions_dict:
+            proposed_name = cand
+            break
+            
+    if proposed_name is None:
+        # Fallback: find any key containing SMOTE-ENN or Proposed
+        for key in predictions_dict.keys():
+            if "SMOTE-ENN" in key or "Proposed" in key:
+                proposed_name = key
+                break
+                
+    if proposed_name is None:
+        # Final fallback: last key
+        proposed_name = list(predictions_dict.keys())[-1]
+
     y_pred_proposed = predictions_dict[proposed_name]
 
     results_rows = []

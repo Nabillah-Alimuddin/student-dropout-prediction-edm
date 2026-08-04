@@ -48,6 +48,11 @@ CATBOOST_N_TRIALS = 50
 CATBOOST_TIMEOUT = 1800  # seconds (30 minutes)
 CATBOOST_MODEL_PATH = os.path.join(MODEL_DIR, "catboost_tuned.pkl")
 
+# ─── LightGBM Configuration ──────────────────────────────────────────────────
+LGBM_N_TRIALS = 100
+LGBM_TIMEOUT = 3600  # seconds (1 hour)
+LGBM_MODEL_PATH = os.path.join(MODEL_DIR, "lgbm_tuned.pkl")
+
 # ─── Cross-Validation ────────────────────────────────────────────────────────
 CV_FOLDS = 10
 
@@ -58,3 +63,4 @@ ALPHA = 0.05
 THRESHOLD_MIN = 0.05
 THRESHOLD_MAX = 0.95
 THRESHOLD_STEP = 0.01
+
