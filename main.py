@@ -1,17 +1,19 @@
 """
 main.py — Entry point for the Student Dropout Prediction Pipeline.
 
-Executes the full research pipeline in 10 sequential phases:
+Executes the full research pipeline in 12 sequential phases:
   Phase 1:  Data Loading & Preparation
   Phase 2:  Preprocessing & Scaling
-  Phase 3:  SMOTE-ENN Resampling
+  Phase 3:  SMOTE-ENN Resampling (for baseline comparisons)
   Phase 4:  Optuna Hyperparameter Tuning
-  Phase 5:  Stacking Ensemble Training
+  Phase 5:  Stacking Ensemble Training (leakage-free OOF, V3.1 fix)
   Phase 6:  Model Evaluation & Threshold Optimization
   Phase 7:  Fair Baseline Model Comparison
   Phase 8:  SHAP Explainability Analysis
+  Phase 8b: McNemar Statistical Significance Test (Stacking vs LightGBM)
   Phase 9:  10-Fold Stratified Cross-Validation
   Phase 10: Final Research Summary
+  Phase 11: Base Learner Ablation Study (4 vs 3 vs 2 learners)
 
 Usage:
     python main.py
@@ -46,7 +48,7 @@ from src.utils import reset_waktu_log, print_separator
 
 
 def main():
-    """Execute the full student dropout prediction pipeline in 10 clean phases."""
+    """Execute the full student dropout prediction pipeline."""
 
     pipeline_start = time.time()
     reset_waktu_log()
@@ -54,7 +56,7 @@ def main():
     print("=" * 70)
     print("  STUDENT DROPOUT PREDICTION PIPELINE")
     print("  Stacking (XGB+LGB+CB+LR) + SMOTE-ENN + SHAP Explainability")
-    print("  Version: V3 (Binary Classification — Final)")
+    print("  Version: V3.1 (Binary Classification — Leakage-Free OOF Fix)")
     print("=" * 70)
     print(f"\n  Output directory: {OUTPUT_DIR}")
     print(f"  Model directory:  {MODEL_DIR}")
@@ -97,6 +99,8 @@ def main():
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 3: SMOTE-ENN Resampling
+    # (Applied globally here ONLY for baseline model comparison in Phase 7.
+    #  The proposed Stacking model applies SMOTE-ENN per fold internally.)
     # ═══════════════════════════════════════════════════════════════════════
     smoteenn = importlib.import_module("src.03_smoteenn")
     apply_smoteenn = smoteenn.apply_smoteenn
@@ -121,11 +125,15 @@ def main():
     }
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 5: Model Training (Stacking Ensemble)
+    # Phase 5: Model Training (Stacking Ensemble — Leakage-Free OOF)
+    #
+    # V3.1 FIX: Pass X_train_sc (scaled, NOT resampled) instead of X_res.
+    # SMOTE-ENN is applied INSIDE each OOF fold within StackingEnsemble.fit()
+    # to prevent synthetic SMOTE neighbor leakage across fold boundaries.
     # ═══════════════════════════════════════════════════════════════════════
     training = importlib.import_module("src.05_training")
     train_final_model_stacking = training.train_final_model_stacking
-    model = train_final_model_stacking(X_res, y_res, best_params_xgb, best_params_lgbm, best_params_cb)
+    model = train_final_model_stacking(X_train_sc, y_train, best_params_xgb, best_params_lgbm, best_params_cb)
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 6: Model Evaluation & Threshold Optimization
@@ -163,6 +171,28 @@ def main():
     )
 
     # ═══════════════════════════════════════════════════════════════════════
+    # Phase 8b: McNemar Statistical Significance Test (Stacking vs LightGBM)
+    #
+    # Focused comparison: tests whether the Stacking model's error pattern
+    # differs significantly from LightGBM (the closest competitor).
+    # ═══════════════════════════════════════════════════════════════════════
+    mcnemar_module = importlib.import_module("src.08_mcnemar")
+    run_mcnemar_tests = mcnemar_module.run_mcnemar_tests
+
+    # Build focused predictions dict: Stacking (proposed) + LightGBM only
+    focused_preds = {}
+    for k, v in predictions_dict.items():
+        if "Stacking" in k or "Proposed" in k or "LightGBM" in k:
+            focused_preds[k] = v
+
+    mcnemar_results = run_mcnemar_tests(y_test, focused_preds)
+
+    # Save McNemar results
+    mcnemar_csv_path = os.path.join(OUTPUT_DIR, "mcnemar_stacking_vs_lgbm.csv")
+    mcnemar_results.to_csv(mcnemar_csv_path, index=False)
+    print(f"  📄 McNemar results saved to {mcnemar_csv_path}")
+
+    # ═══════════════════════════════════════════════════════════════════════
     # Phase 9: 10-Fold Stratified Cross-Validation
     # ═══════════════════════════════════════════════════════════════════════
     cross_validation = importlib.import_module("src.10_cross_validation")
@@ -177,6 +207,22 @@ def main():
     print_research_summary(
         eval_results, comparison_df,
         cv_results, top_features
+    )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 11: Base Learner Ablation Study (4 vs 3 vs 2 Learners)
+    #
+    # Evaluates whether dropping XGBoost (near-zero meta-learner weight)
+    # impacts performance. Compares:
+    #   4-learner: XGB+LGB+CB+LR (current)
+    #   3-learner: LGB+CB+LR (drop XGBoost)
+    #   2-learner: LGB+CB (minimal tree ensemble)
+    # ═══════════════════════════════════════════════════════════════════════
+    ablation_module = importlib.import_module("src.17_base_learner_ablation")
+    run_base_learner_ablation = ablation_module.run_base_learner_ablation
+    ablation_df = run_base_learner_ablation(
+        X_train_sc, y_train, X_test_sc, y_test,
+        best_params_xgb, best_params_lgbm, best_params_cb
     )
 
     # ─── Total pipeline execution time ────────────────────────────────────

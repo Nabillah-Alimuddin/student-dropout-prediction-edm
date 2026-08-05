@@ -47,15 +47,26 @@ def train_final_model(X_res, y_res, best_params):
     return model
 
 
-def train_final_model_stacking(X_res, y_res, best_xgb, best_lgbm, best_cb):
+def train_final_model_stacking(X_train_sc, y_train, best_xgb, best_lgbm, best_cb):
     """
     Train stacking ensemble as final model and save it.
+    
+    Args:
+        X_train_sc: Scaled training features (NOT resampled by SMOTE-ENN).
+        y_train: Original training target.
+        best_xgb: Best XGBoost hyperparameters from Optuna.
+        best_lgbm: Best LightGBM hyperparameters from Optuna.
+        best_cb: Best CatBoost hyperparameters from Optuna.
+    
+    Note:
+        SMOTE-ENN is applied inside each OOF fold within StackingEnsemble.fit()
+        to prevent synthetic sample leakage (V3.1 fix).
     """
     print_separator("PHASE 6: FINAL MODEL TRAINING (STACKING)")
     mulai = time.time()
     
     from src.stacking_training import train_stacking_ensemble
-    model = train_stacking_ensemble(X_res, y_res, best_xgb, best_lgbm, best_cb)
+    model = train_stacking_ensemble(X_train_sc, y_train, best_xgb, best_lgbm, best_cb)
     
     # Save model
     joblib.dump(model, MODEL_PATH)
