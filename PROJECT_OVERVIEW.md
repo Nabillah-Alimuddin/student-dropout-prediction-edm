@@ -1,454 +1,225 @@
 # PROJECT OVERVIEW — Student Dropout Prediction Pipeline
 
-> **Title:** Early Student Dropout Prediction Using XGBoost, SMOTE-ENN, and SHAP Explainability
-> **Version:** V3 (Binary Classification — Final)
-> **Runtime:** Google Colab (Python 3.11.8)
+> **Title:** Early Student Dropout Prediction Using Stacking Ensemble, SMOTE-ENN, and SHAP Explainability  
+> **Version:** V3 (Production-Ready Modular Pipeline & Extended Research Framework)  
+> **Runtime:** Python 3.11+ (Local Environment & Jupyter Notebooks)
 
 ---
 
 ## 1. Project Objective
 
-This is an **academic research project** aimed at building an early warning system to identify higher-education students at risk of dropping out. The core research questions are:
+This is an **academic research project** in Educational Data Mining (EDM) aimed at building an Early Warning System (EWS) to identify higher education students at risk of dropping out before Semester 3. The core research questions are:
 
 | ID | Research Question |
 |----|-------------------|
-| **RQ1** | Can XGBoost combined with SMOTE-ENN outperform traditional ML algorithms in predicting student dropout? |
-| **RQ2** | Is the performance improvement statistically significant compared to baseline models? |
+| **RQ1** | Can an optimized multi-model pipeline combining resampling (SMOTE-ENN), hyperparameter tuning (Optuna), and ensemble learning (Stacking) outperform traditional baseline classifiers in predicting student dropout? |
+| **RQ2** | Which academic, financial, and demographic factors contribute most significantly to student dropout risk, as revealed by SHAP explainability analysis? |
 
-The practical goal is **early intervention** — predicting dropout using demographic and academic data from semesters 1 & 2, enabling institutions to act before semester 3.
+The practical goal is **early institutional intervention** — utilizing demographic, financial, and early academic performance data from Semesters 1 & 2 to enable academic counselors and administrators to act proactively before Semester 3.
 
 ---
 
 ## 2. Repository Structure
 
 ```
-riset/
-├── README.md                          # Research context & development rules
-├── PROJECT_OVERVIEW.md                # This file
+student-dropout-prediction-edm/
+├── README.md                          # Project documentation & execution guide
+├── PROJECT_OVERVIEW.md                # Detailed technical overview (this file)
+├── enhacementRoadmap.md               # Research enhancement & review roadmap
+├── feedbackReviewer.md                # Academic reviewer feedback & revision notes
+├── main.py                            # Main executable entry point (10-phase pipeline)
+│
 ├── data/
 │   └── raw/
-│       └── dataset (1).csv            # Raw dataset (~470 KB)
+│       └── dataset.csv                # UCI Dataset (3,630 filtered binary instances)
+│
 ├── notebooks/
-│   └── exploration.ipynb              # Complete pipeline (21 code cells, V3 Final)
-└── src/
-    ├── 01_data_preparation.py         # (empty — placeholder)
-    ├── 02_preprocessing.py            # (empty — placeholder)
-    ├── 03_smoteenn.py                 # (empty — placeholder)
-    ├── 04_optuna_tuning.py            # (empty — placeholder)
-    ├── 05_training.py                 # (empty — placeholder)
-    ├── 06_evaluation.py               # (empty — placeholder)
-    ├── 07_model_comparison.py         # (empty — placeholder)
-    ├── 08_mcnemar.py                  # (empty — placeholder)
-    ├── 09_shap_analysis.py            # (empty — placeholder)
-    ├── 10_cross_validation.py         # (empty — placeholder)
-    └── 11_summary.py                  # (empty — placeholder)
+│   └── exploration.ipynb              # Monolithic interactive exploration notebook
+│
+├── src/                               # Fully Modular Python Pipeline Scripts
+│   ├── config.py                      # Central configuration (paths, seeds, search spaces)
+│   ├── utils.py                       # Helper utilities & execution timing logger
+│   ├── __init__.py
+│   ├── 01_data_preparation.py         # Load raw dataset & apply binary class filter
+│   ├── 02_preprocessing.py            # Stratified train-test split (80/20) & z-score scaling
+│   ├── 03_smoteenn.py                 # SMOTE-ENN resampling on training split
+│   ├── 04_optuna_tuning.py            # Optuna Bayesian HPO (200 trials for XGB, LGB, CB)
+│   ├── 05_training.py                 # Core single model & ensemble training wrapper
+│   ├── stacking_training.py           # Stacking Ensemble (XGB+LGB+CB+LR -> LR) implementation
+│   ├── 06_evaluation.py               # Evaluation metrics, ROC/PR curves & threshold tuning
+│   ├── 07_model_comparison.py         # Multi-model fair benchmark comparison
+│   ├── 08_mcnemar.py                  # McNemar statistical significance tests
+│   ├── 09_shap_analysis.py            # Global & local SHAP explainability analysis
+│   ├── 10_cross_validation.py         # 10-Fold Stratified Cross-Validation
+│   ├── 11_summary.py                  # Comprehensive research summary reporter
+│   ├── 12_ablation_study.py           # Component-wise ablation study (8 configurations)
+│   ├── 13_smoteenn_analysis.py        # Quantitative SMOTE-ENN impact analysis
+│   ├── 14_model_benchmark.py          # CatBoost & LightGBM benchmark evaluation
+│   ├── 15_calibration_analysis.py     # Probability calibration (Brier Score, ECE, Reliability)
+│   └── 16_error_analysis.py           # FP & FN diagnostic error profiling
+│
+├── outputs/                           # Generated Evaluation Reports & Plots
+│   ├── *.md                           # Qualitative markdown research reports
+│   ├── *.csv                          # Quantitative CSV evaluation tables
+│   └── *.pdf                          # High-resolution PDF plots and figures
+│
+└── models/                            # Trained Binary Model Artifacts (*.pkl)
 ```
 
-### Current State
+### Current System Status
 
-> [!IMPORTANT]
-> **All 11 `.py` files in `src/` are empty** (0 bytes each). The entire working pipeline currently lives in a single monolithic Colab notebook: `notebooks/exploration.ipynb` (21 code cells). The `src/` files appear to be placeholders for a planned refactoring into modular scripts.
+> [!NOTE]
+> **Complete Modularization Achieved:** All 16 modular scripts in `src/` are fully implemented, tested, and integrated. `main.py` serves as the primary pipeline orchestrator, executing the 10 core phases sequentially. Additional standalone research modules (`12_ablation_study.py` through `16_error_analysis.py`) provide advanced validation, calibration, and error profiling capabilities.
 
 ---
 
-## 3. Dataset
+## 3. Dataset Specifications
 
-**Source:** UCI "Predict Students' Dropout and Academic Success" dataset (Higher Education)
+**Source:** [UCI Machine Learning Repository — Predict Students' Dropout and Academic Success](https://archive.ics.uci.edu/dataset/697/predict+students+dropout+and+academic+success)
 
 | Property | Value |
 |----------|-------|
-| File | `data/raw/dataset (1).csv` |
-| Size | ~470 KB |
-| Total Features | 34 input columns + 1 target |
-| Target Column | `Target` |
-| Original Classes | `Dropout`, `Graduate`, `Enrolled` |
-| Binary Filtering | `Enrolled` records **removed** (status not final) |
-| Encoding | `Dropout → 1` (positive/minority), `Graduate → 0` (negative/majority) |
+| **Raw Dataset Size** | 4,424 rows × 35 columns (~470 KB) |
+| **Total Features** | 34 input columns (Demographic, Application, Academic, Economic) |
+| **Target Variable** | `Target` (`Dropout`, `Graduate`, `Enrolled`) |
+| **Binary Filtering** | `Enrolled` instances removed (status is temporary/non-final) |
+| **Filtered Dataset Size** | 3,630 rows (Graduate: 2,209 \| Dropout: 1,421) |
+| **Target Encoding** | `Dropout → 1` (Positive / Minority Class), `Graduate → 0` (Negative Class) |
+| **Imbalance Ratio** | ~1.55 : 1 (Graduate to Dropout) |
 
-### Feature Categories (36 columns total)
+### Feature Category Breakdown (34 input features)
 
-| Category | Features | Examples |
-|----------|----------|---------|
-| **Demographic** | ~7 | `Marital status`, `Nacionality`, `Gender`, `Age at enrollment`, `International` |
-| **Family Background** | ~4 | `Mother's qualification`, `Father's qualification`, `Mother's occupation`, `Father's occupation` |
-| **Application Info** | ~3 | `Application mode`, `Application order`, `Course` |
-| **Enrollment** | ~4 | `Daytime/evening attendance`, `Previous qualification`, `Displaced`, `Educational special needs` |
-| **Financial** | ~3 | `Debtor`, `Tuition fees up to date`, `Scholarship holder` |
-| **Academic — 1st Semester** | 6 | `Curricular units 1st sem (credited/enrolled/evaluations/approved/grade/without evaluations)` |
-| **Academic — 2nd Semester** | 6 | `Curricular units 2nd sem (credited/enrolled/evaluations/approved/grade/without evaluations)` |
-| **Macroeconomic** | 3 | `Unemployment rate`, `Inflation rate`, `GDP` |
-
----
-
-## 4. Full Pipeline (14 Phases)
-
-The pipeline is executed sequentially in `exploration.ipynb`. Below is a detailed breakdown of every phase.
-
-### Phase 0 — Data Loading & Binary Filtering
-
-```
-Cell [3] in exploration.ipynb
-```
-
-- Load CSV from Google Drive path
-- Report dimensions and check for missing values
-- Display original 3-class distribution
-- **Filter out** all `Enrolled` records (rationale: Enrolled = temporary status, not a final outcome)
-- Keep only `Graduate` and `Dropout` → pure binary classification
-- Visualize binary class distribution (bar chart + pie chart)
-- Report imbalance ratio
+| Category | Count | Feature Examples |
+|----------|:---:|------------------|
+| **Demographic** | 5 | `Marital status`, `Nacionality`, `Gender`, `Age at enrollment`, `International` |
+| **Socio-Economic & Family** | 5 | `Mother's qualification`, `Father's qualification`, `Mother's occupation`, `Father's occupation`, `Educational special needs` |
+| **Application & Program** | 4 | `Application mode`, `Application order`, `Course`, `Daytime/evening attendance` |
+| **Financial Support & Debt**| 3 | `Debtor`, `Tuition fees up to date`, `Scholarship holder` |
+| **Academic — 1st Semester** | 6 | `Curricular units 1st sem` (credited, enrolled, evaluations, approved, grade, without evaluations) |
+| **Academic — 2nd Semester** | 6 | `Curricular units 2nd sem` (credited, enrolled, evaluations, approved, grade, without evaluations) |
+| **Macroeconomic Context** | 3 | `Unemployment rate`, `Inflation rate`, `GDP` |
 
 ---
 
-### Phase 1 — Target Encoding
+## 4. Pipeline Execution Architecture
+
+### Core Pipeline Phases (`main.py`)
 
 ```
-Cell [4] in exploration.ipynb
+Raw CSV Dataset (UCI)
+   │
+   ├─ [Phase 1] Data Loading & Binary Filtering
+   │     └─ Load dataset, remove "Enrolled", encode Dropout=1, Graduate=0
+   │
+   ├─ [Phase 2] Preprocessing & Feature Scaling
+   │     └─ 80% Train (2,904) / 20% Test (726) split (seed=42)
+   │     └─ Fit StandardScaler on Train, transform Train & Test
+   │
+   ├─ [Phase 3] SMOTE-ENN Resampling
+   │     └─ Step 1: SMOTE oversampling (minority class to 90% ratio)
+   │     └─ Step 2: ENN boundary noise cleaning (k=3 mode)
+   │
+   ├─ [Phase 4] Optuna Bayesian Hyperparameter Optimization
+   │     └─ 200 trials with Stratified 5-Fold CV maximizing F1-Dropout
+   │     └─ Tuned models: XGBoost, LightGBM, CatBoost
+   │
+   ├─ [Phase 5] Stacking Ensemble Training
+   │     └─ Base Learners: Optuna-tuned XGBoost, LightGBM, CatBoost
+   │     └─ Meta-Learner: Logistic Regression (cross-validated out-of-fold predictions)
+   │
+   ├─ [Phase 6] Model Evaluation & Threshold Optimization
+   │     └─ Sweep decision thresholds (0.05 to 0.95) to maximize F1-Dropout
+   │
+   ├─ [Phase 7] Multi-Model Fair Benchmark Comparison
+   │     └─ Evaluate Stacking, LightGBM, Random Forest, Logistic Regression, CatBoost, XGBoost
+   │
+   ├─ [Phase 8] SHAP Explainability Analysis
+   │     └─ TreeExplainer: Beeswarm, bar plot, dependence plots, waterfall plots
+   │
+   ├─ [Phase 9] 10-Fold Stratified Cross-Validation
+   │     └─ Robustness & stability validation across folds
+   │
+   └─ [Phase 10] Research Summary & Output Generation
+         └─ Console summary, CSV metric tables, PDF plots
 ```
-
-- Map `Dropout → 1` (positive class — the class to detect)
-- Map `Graduate → 0` (negative class)
-- Separate features `X` and target `y`
-- Drop original `Target` and encoded `Target_enc` from feature matrix
-- Report feature count and class distribution percentages
 
 ---
 
-### Phase 2 — Stratified Train-Test Split
+## 5. Summary of Empirical Findings
 
-```
-Cell [5] in exploration.ipynb
-```
+### 1. Model Performance Benchmark
 
-| Parameter | Value |
-|-----------|-------|
-| Test Size | 20% |
-| Training Size | 80% |
-| Stratification | Yes (preserves class proportions) |
-| Random State | 42 |
+Fair evaluation on test set ($N=726$) with per-model threshold optimization:
 
----
+| Model | Optimal Threshold | F1-Dropout | Recall | Precision | AUC-ROC | PR-AUC | Balanced Acc |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Stacking Ensemble (Proposed)** | **0.65** | **0.9063** | 0.9190 | 0.8938 | **0.9729** | **0.9715** | **0.9244** |
+| LightGBM + SMOTE-ENN | 0.53 | 0.9047 | 0.9190 | 0.8908 | 0.9717 | 0.9704 | 0.9233 |
+| Random Forest + SMOTE-ENN | 0.56 | 0.9027 | 0.8979 | **0.9075** | 0.9694 | 0.9654 | 0.9195 |
+| Logistic Regression + SMOTE-ENN | 0.58 | 0.8930 | 0.9261 | 0.8623 | 0.9724 | 0.9713 | 0.9155 |
+| CatBoost + SMOTE-ENN | 0.36 | 0.8700 | **0.9542** | 0.7994 | 0.9706 | 0.9686 | 0.9002 |
+| XGBoost + SMOTE-ENN | 0.31 | 0.8595 | 0.9261 | 0.8018 | 0.9671 | 0.9644 | 0.8895 |
 
-### Phase 3 — Feature Scaling
+### 2. Ablation Analysis Insights (`12_ablation_study.py`)
 
-```
-Cell [6] in exploration.ipynb
-```
-
-- **Method:** `StandardScaler` (z-score normalization)
-- Fit on training data only, transform both train and test
-- Output preserved as DataFrames with original column names and indices
-- Execution time recorded
+Ablation testing on XGBoost demonstrated that:
+- **Baseline XGBoost Default** achieves strong baseline performance ($F_1 = 0.9081$).
+- **SMOTE-ENN Resampling** shifts class balance from 0.643 to 1.008, improving Dropout Recall (+3.52%) and reducing False Negatives from 43 to 33.
+- **Stacking Ensemble** recovers precision loss while retaining high recall, achieving optimal balance ($F_1 = 0.9063$, $\text{AUC-ROC} = 0.9729$).
 
 ---
 
-### Phase 4 — Imbalanced Data Handling (SMOTE-ENN)
+## 6. Key Dependencies & Environment
 
-```
-Cell [7] in exploration.ipynb
-```
-
-This is a **two-step resampling** approach applied only to training data:
-
-| Step | Method | Purpose | Configuration |
-|------|--------|---------|---------------|
-| 1 | **SMOTE** | Oversample minority class (Dropout) | `k_neighbors=5`, target = 90% of majority count |
-| 2 | **ENN** (Edited Nearest Neighbours) | Clean noisy/borderline samples | `n_neighbors=3`, `kind_sel='mode'` |
-
-**Key design decisions:**
-- Target ratio is 90% (not 100%) to avoid introducing too many synthetic samples
-- SMOTE is applied first, then ENN removes noisy observations from both classes
-- Binary classification makes ENN more effective (cleaner decision boundary with only 2 classes)
-- Balance status is verified (≥80% ratio = acceptable)
+| Package | Purpose |
+|---------|---------|
+| `xgboost` | Base gradient boosting classifier |
+| `lightgbm` | Base light gradient boosting classifier |
+| `catboost` | Base categorical gradient boosting classifier |
+| `optuna` | Bayesian hyperparameter optimization engine |
+| `shap` | Model explainability & feature attribution |
+| `imbalanced-learn` | SMOTE and ENN resampling implementations |
+| `scikit-learn` | Preprocessing, StackingClassifier, metrics, cross-validation |
+| `statsmodels` | McNemar statistical significance testing |
+| `pandas` / `numpy` | Data structures & numerical computing |
+| `matplotlib` / `seaborn` | Visualization rendering |
 
 ---
 
-### Phase 5 — Hyperparameter Optimization (Optuna)
-
-```
-Cell [8] in exploration.ipynb
-```
-
-| Setting | Value |
-|---------|-------|
-| Framework | Optuna |
-| Sampler | TPE (Tree-structured Parzen Estimator), seed=42 |
-| Pruner | MedianPruner (n_startup_trials=15, n_warmup_steps=5) |
-| Trials | 200 |
-| Timeout | 7200 seconds (2 hours) |
-| Optimization Target | Maximize F1-Score for Dropout class (binary, pos_label=1) |
-| CV Strategy | 5-fold StratifiedKFold |
-
-**Hyperparameter Search Space:**
-
-| Parameter | Range | Scale |
-|-----------|-------|-------|
-| `n_estimators` | 100 – 700 | linear |
-| `max_depth` | 3 – 6 | linear |
-| `learning_rate` | 0.005 – 0.3 | log |
-| `subsample` | 0.5 – 1.0 | linear |
-| `colsample_bytree` | 0.4 – 1.0 | linear |
-| `colsample_bylevel` | 0.4 – 1.0 | linear |
-| `colsample_bynode` | 0.4 – 1.0 | linear |
-| `min_child_weight` | 5 – 30 | linear |
-| `gamma` | 0.0 – 10.0 | linear |
-| `max_delta_step` | 1 – 10 | linear |
-| `reg_alpha` | 1.0 – 30.0 | log |
-| `reg_lambda` | 1.0 – 30.0 | log |
-| `scale_pos_weight` | 0.5 – 2.0 | linear |
-
-**Fixed parameters:** `objective='binary:logistic'`, `eval_metric='logloss'`, `tree_method='hist'`
-
----
-
-### Phase 6 — Model Training
-
-```
-Cell [9] in exploration.ipynb
-```
-
-- Instantiate `XGBClassifier` with best parameters from Optuna
-- Train on **SMOTE-ENN resampled data** (`X_res`, `y_res`)
-- Evaluation set: original scaled test data (`X_test_sc`, `y_test`)
-- Verbose output disabled
-
----
-
-### Phase 7 — Model Evaluation
-
-```
-Cells [10–13] in exploration.ipynb
-```
-
-#### 7.0 — Core Metrics
-
-| Metric | Purpose |
-|--------|---------|
-| Accuracy | Overall correct predictions |
-| Balanced Accuracy | Average recall per class (handles imbalance) |
-| **F1-Score (Binary, Dropout)** | **Primary metric** — harmonic mean of precision & recall for Dropout |
-| Precision (Dropout) | Proportion of predicted dropouts that are actual dropouts |
-| Recall (Dropout) | Proportion of actual dropouts that are correctly identified |
-| AUC-ROC | Discriminative ability across all thresholds |
-| Cohen's Kappa | Agreement beyond chance |
-| MCC (Matthews Correlation Coefficient) | Balanced measure for binary classification |
-
-#### 7.1 — Learning Curve
-- Plots training vs. validation F1 across increasing sample sizes
-- Includes overfitting gap analysis (threshold = 0.10)
-
-#### 7.2 — AUC-ROC Curve
-- Full ROC curve visualization for the proposed model
-
-#### 7.3 — Threshold Optimization
-- Sweeps probability threshold from 0.05 to 0.95 (step 0.01)
-- Plots F1, Recall, and Precision as a function of threshold
-- Identifies optimal threshold that maximizes F1-Dropout
-- Compares default (0.50) vs. optimal threshold performance
-
----
-
-### Phase 8 — Baseline Model Comparison
-
-```
-Cell [14] in exploration.ipynb
-```
-
-Five models are compared on the **same test set**:
-
-| # | Model | Training Data | Class Weighting |
-|---|-------|---------------|-----------------|
-| 1 | Decision Tree | Original (scaled) | `class_weight='balanced'` |
-| 2 | Logistic Regression | Original (scaled) | `class_weight='balanced'`, max_iter=1000 |
-| 3 | Random Forest | Original (scaled) | `class_weight='balanced'`, n_estimators=100 |
-| 4 | XGBoost (Baseline) | Original (scaled) | Default (n_estimators=100, max_depth=6, lr=0.1) |
-| 5 | **XGBoost + SMOTE-ENN (Proposed)** | SMOTE-ENN resampled | Optuna-tuned parameters |
-
-**Visualizations produced:**
-- Grouped bar chart comparing F1-Dropout, Recall, Precision, AUC-ROC, Balanced Accuracy
-- Precision-Recall curve for all 5 models with Average Precision scores
-
----
-
-### Phase 9 — Statistical Significance (McNemar Test)
-
-```
-Cell [15] in exploration.ipynb
-```
-
-- Pairwise McNemar test: Proposed model vs. each baseline
-- Tests whether the difference in error patterns is statistically significant
-- Significance level: α = 0.05
-- Uses exact test when (b + c) < 25, chi-squared approximation otherwise
-- Directly answers **RQ2**
-
----
-
-### Phase 10 — Error Analysis (Confusion Matrix)
-
-```
-Cell [16] in exploration.ipynb
-```
-
-- Dual confusion matrix: absolute counts + normalized proportions
-- Detailed TP/FP/FN/TN breakdown with interpretations
-- Manual recalculation of Precision, Recall, F1 from confusion matrix values
-
----
-
-### Phase 11 — Explainability (SHAP)
-
-```
-Cell [17] in exploration.ipynb
-```
-
-Using `shap.TreeExplainer` for the final XGBoost model:
-
-| Analysis | Type | Purpose |
-|----------|------|---------|
-| **Beeswarm Plot** | Global | Feature influence distribution across all test samples |
-| **Bar Chart** | Global | Mean absolute SHAP value per feature (top 15) |
-| **Top 10 Table** | Global | Mean |SHAP|, mean direction, and interpretation |
-| **Dependence Plots** | Semi-local | Top 3 features: SHAP value vs. feature value with interaction coloring |
-| **Waterfall (Dropout)** | Individual | Explains a single correctly-predicted Dropout instance |
-| **Waterfall (Graduate)** | Individual | Explains a single correctly-predicted Graduate instance |
-
-**Interpretation convention:** SHAP > 0 = increases dropout risk, SHAP < 0 = decreases dropout risk.
-
----
-
-### Phase 12 — Robustness Validation (10-Fold CV)
-
-```
-Cell [18] in exploration.ipynb
-```
-
-- 10-fold StratifiedKFold cross-validation on resampled data
-- Re-trains from scratch in each fold using best Optuna parameters
-- Metrics: F1-Dropout, AUC-ROC, Balanced Accuracy, MCC
-- Reports mean ± std, min, max per metric
-
----
-
-### Phase 13 — Computational Efficiency
-
-```
-Cell [19] in exploration.ipynb
-```
-
-- Tracks execution time for every phase via `catat_waktu()` utility
-- Produces summary table: phase name, seconds, minutes
-- Total pipeline execution time
-
----
-
-### Phase 14 — Research Summary
-
-```
-Cell [20] in exploration.ipynb
-```
-
-- Answers RQ1: delta between Proposed vs. Baseline for all metrics
-- Answers RQ2: McNemar p-values and significance conclusions
-- Reports optimal threshold and its impact
-- Lists top 5 SHAP features with their influence direction
-- Summarizes early warning context and practical implications
-- Lists all generated PDF output files
-
----
-
-## 5. Key Libraries & Dependencies
-
-| Library | Version | Purpose |
-|---------|---------|---------|
-| `xgboost` | — | Primary classifier (XGBClassifier) |
-| `optuna` | — | Bayesian hyperparameter optimization |
-| `shap` | — | Model explainability (TreeExplainer) |
-| `imbalanced-learn` | — | SMOTE and ENN resampling |
-| `scikit-learn` | — | Preprocessing, metrics, CV, baselines |
-| `statsmodels` | — | McNemar statistical test |
-| `pandas` / `numpy` | — | Data manipulation |
-| `matplotlib` / `seaborn` | — | Visualization |
-
----
-
-## 6. Output Artifacts (PDF Figures)
-
-| File | Content |
-|------|---------|
-| `v3_distribusi_binary.pdf` | Binary class distribution (bar + pie) |
-| `v3_learning_curve.pdf` | Training vs. validation F1 + overfitting gap |
-| `v3_roc_curve.pdf` | AUC-ROC curve |
-| `v3_threshold_optimization.pdf` | F1/Recall/Precision vs. threshold |
-| `v3_perbandingan_metrik.pdf` | 5-model metric comparison bar chart |
-| `v3_precision_recall_curve.pdf` | PR curves for all models |
-| `v3_confusion_matrix.pdf` | Confusion matrix (counts + proportions) |
-| `v3_shap_beeswarm.pdf` | SHAP beeswarm plot |
-| `v3_shap_global_bar.pdf` | SHAP global feature importance |
-| `v3_shap_dep_*.pdf` | SHAP dependence plots (top 3 features) |
-| `v3_shap_waterfall_dropout.pdf` | Individual SHAP explanation (Dropout) |
-| `v3_shap_waterfall_graduate.pdf` | Individual SHAP explanation (Graduate) |
-
----
-
-## 7. Architecture Diagram
+## 7. Pipeline Flowchart
 
 ```mermaid
 flowchart TD
-    A["Raw CSV Dataset<br/>4424 rows × 35 cols"] --> B["Filter Binary<br/>Remove Enrolled"]
-    B --> C["Encode Target<br/>Dropout=1, Graduate=0"]
+    A["Raw Dataset<br/>4,424 rows × 35 cols"] --> B["Binary Filter<br/>Remove 'Enrolled'"]
+    B --> C["Target Encoding<br/>Dropout=1, Graduate=0"]
     C --> D["Stratified Split<br/>80% Train / 20% Test"]
     D --> E["StandardScaler<br/>Fit on Train"]
-    E --> F["SMOTE<br/>Oversample Dropout to 90%"]
-    F --> G["ENN<br/>Remove Noisy Samples"]
-    G --> H["Optuna HPO<br/>200 trials, 5-fold CV<br/>Maximize F1-Dropout"]
-    H --> I["Train XGBoost<br/>Best Params"]
-    I --> J["Evaluate on Test Set"]
+    E --> F["SMOTE Oversampling<br/>Minority to 90%"]
+    F --> G["ENN Noise Reduction<br/>Remove Boundary Noise"]
+    G --> H["Optuna HPO<br/>XGB, LGB, CB (200 trials)"]
+    H --> I["Stacking Ensemble<br/>Base: XGB+LGB+CB | Meta: LR"]
+    I --> J["Evaluate & Optimize Threshold"]
     
-    J --> K["Core Metrics"]
-    J --> L["Learning Curve"]
-    J --> M["ROC Curve"]
-    J --> N["Threshold Optimization"]
-    J --> O["Baseline Comparison<br/>DT, LR, RF, XGB Base"]
-    J --> P["McNemar Test<br/>Statistical Significance"]
-    J --> Q["Confusion Matrix<br/>Error Analysis"]
-    J --> R["SHAP Analysis<br/>Explainability"]
-    J --> S["10-Fold CV<br/>Robustness"]
+    J --> K["Fair Model Benchmark"]
+    J --> L["SHAP Explainability"]
+    J --> M["10-Fold Stratified CV"]
+    J --> N["Ablation Study"]
+    J --> O["Calibration & Reliability"]
+    J --> P["Diagnostic Error Profiling"]
 
     style A fill:#3498db,color:#fff
     style F fill:#e67e22,color:#fff
     style G fill:#e67e22,color:#fff
     style H fill:#9b59b6,color:#fff
     style I fill:#e74c3c,color:#fff
-    style R fill:#2ecc71,color:#fff
+    style L fill:#2ecc71,color:#fff
 ```
 
 ---
 
-## 8. Critical Constraints (from README)
+## 8. Research Principles & Constraints
 
-1. **Do not** change research objectives or target encoding
-2. **Maintain** binary classification setting (no multiclass)
-3. **Preserve** SMOTE-ENN preprocessing pipeline
-4. **Preserve** SHAP explainability pipeline and compatibility
-5. **Preserve** statistical testing procedures (McNemar)
-6. **Prioritize** reproducibility and academic validity
-7. All major code changes must be explained before implementation
-8. Random seed `SEED = 42` used throughout for reproducibility
-
----
-
-## 9. Current Gaps & Observations
-
-> [!WARNING]
-> The following items are observations about the current state — not recommendations for changes.
-
-| # | Observation |
-|---|-------------|
-| 1 | All `src/*.py` files are empty (0 bytes). The full pipeline runs only from `exploration.ipynb`. |
-| 2 | The notebook uses a Google Drive path (`/content/drive/MyDrive/XGBOOST-DO/Colab/dataset.csv`) which differs from the local data path (`data/raw/dataset (1).csv`). |
-| 3 | No `requirements.txt` or environment specification file exists. |
-| 4 | The notebook has no markdown cells — all 21 cells are code with inline comments (in Indonesian). |
-| 5 | No saved model artifacts (`.pkl`, `.joblib`) — the model exists only in notebook memory during execution. |
-| 6 | Cross-validation (Phase 12) runs on resampled data rather than applying SMOTE-ENN inside each fold, which could introduce data leakage. |
-| 7 | PDF outputs are saved to the Colab working directory, not to a structured `outputs/` folder. |
+1. **Academic Reproducibility:** Global seed locking (`SEED = 42`) across NumPy, scikit-learn, XGBoost, LightGBM, CatBoost, and Optuna.
+2. **Leakage-Free Preprocessing:** All transformations (StandardScaler, SMOTE-ENN) fit exclusively on training data splits.
+3. **Evidence-Based Interpretations:** Error analysis and SHAP interpretations strictly avoid speculative non-observed variables and focus on observable educational metrics.
+4. **Primary Evaluation Metric:** $F_1$-Dropout score prioritized to balance Precision and Recall for the positive/minority class.
