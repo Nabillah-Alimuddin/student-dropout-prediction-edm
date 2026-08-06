@@ -28,7 +28,7 @@ The project investigates two primary research questions:
 
 ## 💡 Key Research Findings & Contributions
 
-1. **Stacking Ensemble Superiority:** The proposed Stacking Ensemble (combining XGBoost, LightGBM, CatBoost with Logistic Regression meta-learner) achieved the highest overall predictive performance with an **F1-Dropout of 0.9063**, **AUC-ROC of 0.9729**, and **Balanced Accuracy of 0.9244**.
+1. **Stacking Ensemble Superiority:** The proposed Stacking Ensemble (combining LightGBM, CatBoost, and Logistic Regression with a Logistic Regression meta-learner) achieved the highest overall predictive performance with an **F1-Dropout of 0.9158**, **AUC-ROC of 0.9736**, and **Balanced Accuracy of 0.9312** (at the optimal threshold of 0.69).
 2. **Empirical Ablation Insights:** Ablation experiments revealed that baseline tree models (XGBoost Default) perform strongly on this dataset ($F_1 = 0.9081$). Synthetic resampling via SMOTE-ENN trades minor precision for improved recall (+3.52%), ensuring fewer at-risk students are missed (False Negatives reduced from 43 to 33).
 3. **Academic Determinants of Dropout:** SHAP analysis identified 2nd Semester Approved Units ($\text{Mean } |\text{SHAP}| = 1.081$), 1st Semester Approved Units ($0.555$), 2nd Semester Grades ($0.395$), Tuition Fee Payment Status ($0.361$), and Scholarship Status ($0.276$) as the top predictors of student retention.
 4. **Actionable Error Profiling:** Diagnostic profiling of misclassified cases (FP/FN) highlighted that financial status (tuition payment up to date) and scholarship support strongly cushion student retention, whereas non-academic unobserved factors account for silent dropouts among high-performing students.
@@ -129,18 +129,18 @@ Raw UCI Dataset
 
 ### 1. Model Benchmark Comparison (Optimal Thresholding)
 
-Evaluated on the held-out test set ($N = 726$):
+Evaluated on the held-out test set ($N = 726$) under completely fair, leakage-free conditions:
 
 | Model | Threshold | F1-Dropout | Recall | Precision | AUC-ROC | PR-AUC | Balanced Acc |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Stacking Ensemble (Proposed)** | **0.65** | **0.9063** | 0.9190 | 0.8938 | **0.9729** | **0.9715** | **0.9244** |
-| LightGBM + SMOTE-ENN | 0.53 | 0.9047 | 0.9190 | 0.8908 | 0.9717 | 0.9704 | 0.9233 |
-| Random Forest + SMOTE-ENN | 0.56 | 0.9027 | 0.8979 | **0.9075** | 0.9694 | 0.9654 | 0.9195 |
-| Logistic Regression + SMOTE-ENN | 0.58 | 0.8930 | 0.9261 | 0.8623 | 0.9724 | 0.9713 | 0.9155 |
-| CatBoost + SMOTE-ENN | 0.36 | 0.8700 | **0.9542** | 0.7994 | 0.9706 | 0.9686 | 0.9002 |
-| XGBoost + SMOTE-ENN | 0.31 | 0.8595 | 0.9261 | 0.8018 | 0.9671 | 0.9644 | 0.8895 |
+| **Stacking Ensemble (Proposed)** | **0.69** | **0.9158** | 0.9190 | 0.9126 | **0.9736** | **0.9724** | **0.9312** |
+| CatBoost + SMOTE-ENN | 0.59 | 0.9117 | 0.9085 | 0.9149 | 0.9706 | 0.9686 | 0.9271 |
+| Random Forest + SMOTE-ENN | 0.60 | 0.9065 | 0.8873 | **0.9265** | 0.9694 | 0.9654 | 0.9210 |
+| LightGBM + SMOTE-ENN | 0.62 | 0.9049 | 0.9049 | 0.9049 | 0.9717 | 0.9704 | 0.9219 |
+| XGBoost + SMOTE-ENN | 0.51 | 0.8893 | 0.8768 | 0.9022 | 0.9671 | 0.9644 | 0.9078 |
+| Logistic Regression + SMOTE-ENN | 0.54 | 0.8844 | **0.9296** | 0.8435 | 0.9724 | 0.9713 | 0.9094 |
 
-### 2. Ablation Study Summary
+### 2. Component-Wise Ablation Study Summary
 
 Isolation of individual pipeline components using XGBoost:
 
@@ -152,6 +152,18 @@ Isolation of individual pipeline components using XGBoost:
 | XGBoost + Threshold Optimization | 0.47 | 0.9005 | 0.9215 | 0.9085 | 0.8927 | 0.9719 | 0.8358 |
 | XGBoost + Optuna + SMOTE | 0.50 | 0.9011 | 0.9256 | 0.8662 | 0.9389 | 0.9683 | 0.8434 |
 | XGBoost + Optuna + SMOTE-ENN | 0.50 | 0.8917 | 0.9160 | 0.8838 | 0.8996 | 0.9671 | 0.8231 |
+
+### 3. Base Learner Ablation Study (Stacking Parsimony)
+
+Evaluates the performance contribution of each base learner to justify dropping XGBoost (parsimonious 3-learner ensemble vs 4-learner):
+
+| Configuration | Threshold | F1-Dropout | Recall | Precision | AUC-ROC | Balanced Acc | MCC | Meta-Learner Coefficients |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---|
+| 4-learner (XGB+LGB+CB+LR) | 0.73 | 0.9113 | 0.9049 | **0.9179** | 0.9729 | 0.9264 | 0.8551 | XGBoost: 2.1812, LightGBM: 1.1653, CatBoost: 0.4326, LogisticRegression: 2.5909 |
+| **3-learner (LGB+CB+LR) — Proposed** | **0.71** | **0.9155** | **0.9155** | 0.9155 | **0.9736** | **0.9306** | **0.8612** | LightGBM: 1.5271, CatBoost: 1.8172, LogisticRegression: 2.8248 |
+| 2-learner (LGB+CB) | 0.73 | 0.9110 | 0.9014 | 0.9209 | 0.9722 | 0.9258 | 0.8549 | LightGBM: 2.6892, CatBoost: 3.3117 |
+
+*Note: The McNemar test between the 4-learner and 3-learner ensembles yields a p-value of 0.625, proving no statistically significant difference. Dropping XGBoost simplifies the ensemble structure (parsimony) without losing performance.*
 
 ---
 

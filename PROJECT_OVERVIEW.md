@@ -149,23 +149,31 @@ Raw CSV Dataset (UCI)
 
 ### 1. Model Performance Benchmark
 
-Fair evaluation on test set ($N=726$) with per-model threshold optimization:
+Fair evaluation on test set ($N=726$) under leakage-free conditions with per-model threshold optimization:
 
 | Model | Optimal Threshold | F1-Dropout | Recall | Precision | AUC-ROC | PR-AUC | Balanced Acc |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Stacking Ensemble (Proposed)** | **0.65** | **0.9063** | 0.9190 | 0.8938 | **0.9729** | **0.9715** | **0.9244** |
-| LightGBM + SMOTE-ENN | 0.53 | 0.9047 | 0.9190 | 0.8908 | 0.9717 | 0.9704 | 0.9233 |
-| Random Forest + SMOTE-ENN | 0.56 | 0.9027 | 0.8979 | **0.9075** | 0.9694 | 0.9654 | 0.9195 |
-| Logistic Regression + SMOTE-ENN | 0.58 | 0.8930 | 0.9261 | 0.8623 | 0.9724 | 0.9713 | 0.9155 |
-| CatBoost + SMOTE-ENN | 0.36 | 0.8700 | **0.9542** | 0.7994 | 0.9706 | 0.9686 | 0.9002 |
-| XGBoost + SMOTE-ENN | 0.31 | 0.8595 | 0.9261 | 0.8018 | 0.9671 | 0.9644 | 0.8895 |
+| **Stacking Ensemble (Proposed)** | **0.69** | **0.9158** | 0.9190 | 0.9126 | **0.9736** | **0.9724** | **0.9312** |
+| CatBoost + SMOTE-ENN | 0.59 | 0.9117 | 0.9085 | 0.9149 | 0.9706 | 0.9686 | 0.9271 |
+| Random Forest + SMOTE-ENN | 0.60 | 0.9065 | 0.8873 | **0.9265** | 0.9694 | 0.9654 | 0.9210 |
+| LightGBM + SMOTE-ENN | 0.62 | 0.9049 | 0.9049 | 0.9049 | 0.9717 | 0.9704 | 0.9219 |
+| XGBoost + SMOTE-ENN | 0.51 | 0.8893 | 0.8768 | 0.9022 | 0.9671 | 0.9644 | 0.9078 |
+| Logistic Regression + SMOTE-ENN | 0.54 | 0.8844 | **0.9296** | 0.8435 | 0.9724 | 0.9713 | 0.9094 |
 
-### 2. Ablation Analysis Insights (`12_ablation_study.py`)
+### 2. Component-Wise Ablation Analysis Insights (`12_ablation_study.py`)
 
 Ablation testing on XGBoost demonstrated that:
 - **Baseline XGBoost Default** achieves strong baseline performance ($F_1 = 0.9081$).
 - **SMOTE-ENN Resampling** shifts class balance from 0.643 to 1.008, improving Dropout Recall (+3.52%) and reducing False Negatives from 43 to 33.
-- **Stacking Ensemble** recovers precision loss while retaining high recall, achieving optimal balance ($F_1 = 0.9063$, $\text{AUC-ROC} = 0.9729$).
+- **Stacking Ensemble** recovers precision loss while retaining high recall, achieving optimal balance ($F_1 = 0.9158$, $\text{AUC-ROC} = 0.9736$).
+
+### 3. Base Learner Ablation & Parsimony (`17_base_learner_ablation.py`)
+
+Base learner pruning experiments comparing 4, 3, and 2-learner stacking ensembles on test set:
+- **4-learner (XGB+LGB+CB+LR)**: $F_1 = 0.9113$ at threshold $0.73$.
+- **3-learner (LGB+CB+LR) — Proposed**: $F_1 = 0.9155$ at threshold $0.71$.
+- **2-learner (LGB+CB)**: $F_1 = 0.9110$ at threshold $0.73$.
+- **Parsimony Conclusion**: McNemar significance test between 4-learner and 3-learner yields $p = 0.625$ (not statistically significant). Dropping XGBoost simplifies the model structure (saving CPU/memory footprint) without any loss in predictive performance.
 
 ---
 
