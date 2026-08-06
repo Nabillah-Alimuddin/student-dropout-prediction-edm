@@ -31,6 +31,7 @@ def run_mcnemar_tests(y_test, predictions_dict):
 
     # Find the proposed model name dynamically
     proposed_candidates = [
+        "Stacking (Proposed) + SMOTE-ENN",
         "Stacking (XGB+LGB+CB) + SMOTE-ENN",
         "XGBoost + SMOTE-ENN (Proposed)",
         "XGBoost + SMOTE-ENN"
@@ -42,9 +43,16 @@ def run_mcnemar_tests(y_test, predictions_dict):
             break
             
     if proposed_name is None:
-        # Fallback: find any key containing SMOTE-ENN or Proposed
+        # Fallback: find any key containing "Proposed" (very specific!)
         for key in predictions_dict.keys():
-            if "SMOTE-ENN" in key or "Proposed" in key:
+            if "Proposed" in key:
+                proposed_name = key
+                break
+                
+    if proposed_name is None:
+        # Fallback: find any key containing "Stacking"
+        for key in predictions_dict.keys():
+            if "Stacking" in key:
                 proposed_name = key
                 break
                 

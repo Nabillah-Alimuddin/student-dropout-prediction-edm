@@ -47,7 +47,7 @@ def train_final_model(X_res, y_res, best_params):
     return model
 
 
-def train_final_model_stacking(X_train_sc, y_train, best_xgb, best_lgbm, best_cb):
+def train_final_model_stacking(X_train_sc, y_train, best_xgb, best_lgbm, best_cb, use_xgb=True, use_lr=True):
     """
     Train stacking ensemble as final model and save it.
     
@@ -57,6 +57,8 @@ def train_final_model_stacking(X_train_sc, y_train, best_xgb, best_lgbm, best_cb
         best_xgb: Best XGBoost hyperparameters from Optuna.
         best_lgbm: Best LightGBM hyperparameters from Optuna.
         best_cb: Best CatBoost hyperparameters from Optuna.
+        use_xgb: If True, includes XGBoost in the base models.
+        use_lr: If True, includes Logistic Regression in the base models.
     
     Note:
         SMOTE-ENN is applied inside each OOF fold within StackingEnsemble.fit()
@@ -66,7 +68,7 @@ def train_final_model_stacking(X_train_sc, y_train, best_xgb, best_lgbm, best_cb
     mulai = time.time()
     
     from src.stacking_training import train_stacking_ensemble
-    model = train_stacking_ensemble(X_train_sc, y_train, best_xgb, best_lgbm, best_cb)
+    model = train_stacking_ensemble(X_train_sc, y_train, best_xgb, best_lgbm, best_cb, use_xgb=use_xgb, use_lr=use_lr)
     
     # Save model
     joblib.dump(model, MODEL_PATH)

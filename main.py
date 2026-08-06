@@ -121,7 +121,8 @@ def main():
     best_params_stacking = {
         "xgb": best_params_xgb,
         "lgb": best_params_lgbm,
-        "cat": best_params_cb
+        "cat": best_params_cb,
+        "use_xgb": False
     }
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -130,10 +131,11 @@ def main():
     # V3.1 FIX: Pass X_train_sc (scaled, NOT resampled) instead of X_res.
     # SMOTE-ENN is applied INSIDE each OOF fold within StackingEnsemble.fit()
     # to prevent synthetic SMOTE neighbor leakage across fold boundaries.
+    # We use use_xgb=False (3-learner: LGB+CB+LR) as the proposed final model.
     # ═══════════════════════════════════════════════════════════════════════
     training = importlib.import_module("src.05_training")
     train_final_model_stacking = training.train_final_model_stacking
-    model = train_final_model_stacking(X_train_sc, y_train, best_params_xgb, best_params_lgbm, best_params_cb)
+    model = train_final_model_stacking(X_train_sc, y_train, best_params_xgb, best_params_lgbm, best_params_cb, use_xgb=False)
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 6: Model Evaluation & Threshold Optimization
@@ -224,6 +226,13 @@ def main():
         X_train_sc, y_train, X_test_sc, y_test,
         best_params_xgb, best_params_lgbm, best_params_cb
     )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 12: Auto-Update Documentation & PDF Generation
+    # ═══════════════════════════════════════════════════════════════════════
+    doc_module = importlib.import_module("src.update_documentation")
+    run_documentation_update = doc_module.run_documentation_update
+    run_documentation_update()
 
     # ─── Total pipeline execution time ────────────────────────────────────
     total_time = time.time() - pipeline_start

@@ -139,7 +139,7 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
         })
 
     # Add Proposed Stacking Ensemble (Proposed Model)
-    proposed_name = "Stacking (Proposed) + SMOTE-ENN"
+    proposed_name = "Stacking (Proposed: LGB+CB+LR) + SMOTE-ENN"
     y_proba_prop = model_proposed.predict_proba(X_test_sc)[:, 1]
     y_pred_prop = (y_proba_prop >= optimal_threshold).astype(int)
 

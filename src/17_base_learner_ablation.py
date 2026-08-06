@@ -2,24 +2,17 @@
 17_base_learner_ablation.py — Base Learner Ablation Study.
 
 Compares stacking ensemble configurations with different base learner subsets
-to determine whether all 4 base learners contribute meaningfully:
+to determine whether all base learners contribute meaningfully:
 
   4-learner: XGBoost + LightGBM + CatBoost + LogisticRegression (current)
-  3-learner: LightGBM + CatBoost + LogisticRegression (drop XGBoost)
+  3-learner: LightGBM + CatBoost + LogisticRegression (drop XGBoost — proposed)
   2-learner: LightGBM + CatBoost (minimal tree ensemble)
 
-Each variant uses identical, leakage-free training procedure:
-  - 5-fold Stratified OOF with SMOTE-ENN inside each fold
-  - LogisticRegression meta-learner
-  - Threshold optimization via OOF probability sweep
+Each variant uses the unified, leakage-free training and threshold optimization
+procedure identical to the main pipeline.
 
 Includes McNemar test between 4-learner and 3-learner to test whether
 dropping XGBoost causes a statistically significant change in error pattern.
-
-Motivation:
-  In V3, XGBoost's meta-learner coefficient was near zero (-0.0229),
-  suggesting it contributes negligibly. This ablation provides empirical
-  evidence to justify retaining or dropping XGBoost.
 """
 
 import time
@@ -29,154 +22,19 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sklearn.model_selection import StratifiedKFold
-from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.metrics import (
     f1_score, recall_score, precision_score,
     roc_auc_score, balanced_accuracy_score, matthews_corrcoef
 )
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
-from catboost import CatBoostClassifier
-from imblearn.over_sampling import SMOTE
-from imblearn.under_sampling import EditedNearestNeighbours
 from statsmodels.stats.contingency_tables import mcnemar
 
 from src.config import (
     SEED, OUTPUT_DIR, ALPHA,
-    SMOTE_K_NEIGHBORS, SMOTE_TARGET_RATIO, ENN_N_NEIGHBORS, ENN_KIND_SEL,
     THRESHOLD_MIN, THRESHOLD_MAX, THRESHOLD_STEP
 )
 from src.utils import catat_waktu, save_pdf, print_separator
-
-
-def _get_base_learner_factories(config_name, p_xgb, p_lgb, p_cb, seed):
-    """Return an ordered dict of {name: factory_fn} for a given configuration."""
-    lr_factory = lambda: LogisticRegression(
-        class_weight="balanced", max_iter=1000, random_state=seed
-    )
-    
-    if config_name == "4-learner":
-        return {
-            "XGBoost": lambda: XGBClassifier(**p_xgb),
-            "LightGBM": lambda: LGBMClassifier(**p_lgb),
-            "CatBoost": lambda: CatBoostClassifier(**p_cb),
-            "LogisticRegression": lr_factory,
-        }
-    elif config_name == "3-learner":
-        return {
-            "LightGBM": lambda: LGBMClassifier(**p_lgb),
-            "CatBoost": lambda: CatBoostClassifier(**p_cb),
-            "LogisticRegression": lr_factory,
-        }
-    elif config_name == "2-learner":
-        return {
-            "LightGBM": lambda: LGBMClassifier(**p_lgb),
-            "CatBoost": lambda: CatBoostClassifier(**p_cb),
-        }
-    else:
-        raise ValueError(f"Unknown config: {config_name}")
-
-
-def _train_stacking_variant(X_train_sc, y_train, factories, seed):
-    """
-    Train a stacking variant with SMOTE-ENN inside each OOF fold.
-    
-    Returns:
-        final_models: List of refitted base learner models (on full resampled data).
-        meta_learner: Trained LogisticRegression meta-learner.
-        oof_meta_proba: OOF-level stacking probabilities (for threshold optimization).
-    """
-    X_arr = np.array(X_train_sc)
-    y_arr = np.array(y_train)
-    
-    n_base = len(factories)
-    base_names = list(factories.keys())
-    
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-    oof_preds = np.zeros((X_arr.shape[0], n_base))
-    
-    for train_idx, val_idx in skf.split(X_arr, y_arr):
-        X_tr, X_val = X_arr[train_idx], X_arr[val_idx]
-        y_tr = y_arr[train_idx]
-        
-        # SMOTE-ENN inside fold (leakage-free)
-        smote = SMOTE(
-            k_neighbors=SMOTE_K_NEIGHBORS,
-            random_state=seed,
-            sampling_strategy=SMOTE_TARGET_RATIO
-        )
-        enn = EditedNearestNeighbours(
-            n_neighbors=ENN_N_NEIGHBORS,
-            kind_sel=ENN_KIND_SEL
-        )
-        X_tr_res, y_tr_res = smote.fit_resample(X_tr, y_tr)
-        X_tr_clean, y_tr_clean = enn.fit_resample(X_tr_res, y_tr_res)
-        
-        # Fit fold models and collect OOF predictions
-        for j, (name, factory) in enumerate(factories.items()):
-            m = factory()
-            if "XGBoost" in name or "CatBoost" in name:
-                m.fit(X_tr_clean, y_tr_clean, verbose=False)
-            else:
-                m.fit(X_tr_clean, y_tr_clean)
-            oof_preds[val_idx, j] = m.predict_proba(X_val)[:, 1]
-    
-    # Train meta-learner on OOF predictions
-    meta_learner = LogisticRegression(
-        class_weight="balanced", max_iter=1000, random_state=seed
-    )
-    meta_learner.fit(oof_preds, y_arr)
-    
-    # OOF stacking probabilities for threshold optimization
-    oof_meta_proba = meta_learner.predict_proba(oof_preds)[:, 1]
-    
-    # Refit all base models on full data with SMOTE-ENN
-    smote_full = SMOTE(
-        k_neighbors=SMOTE_K_NEIGHBORS,
-        random_state=seed,
-        sampling_strategy=SMOTE_TARGET_RATIO
-    )
-    enn_full = EditedNearestNeighbours(
-        n_neighbors=ENN_N_NEIGHBORS,
-        kind_sel=ENN_KIND_SEL
-    )
-    X_full_res, y_full_res = smote_full.fit_resample(X_arr, y_arr)
-    X_final, y_final = enn_full.fit_resample(X_full_res, y_full_res)
-    
-    final_models = []
-    for name, factory in factories.items():
-        m = factory()
-        if "XGBoost" in name or "CatBoost" in name:
-            m.fit(X_final, y_final, verbose=False)
-        else:
-            m.fit(X_final, y_final)
-        final_models.append(m)
-    
-    return final_models, meta_learner, oof_meta_proba
-
-
-def _predict_stacking(final_models, meta_learner, X_test):
-    """Predict probabilities using stacking variant."""
-    X_arr = np.array(X_test)
-    meta_features = np.column_stack([
-        m.predict_proba(X_arr)[:, 1] for m in final_models
-    ])
-    return meta_learner.predict_proba(meta_features)[:, 1]
-
-
-def _find_optimal_threshold_oof(y_true, y_proba):
-    """Find optimal F1 threshold via sweep on OOF probabilities."""
-    thresholds = np.arange(THRESHOLD_MIN, THRESHOLD_MAX + THRESHOLD_STEP, THRESHOLD_STEP)
-    best_f1 = -1
-    best_t = 0.50
-    for t in thresholds:
-        y_pred = (y_proba >= t).astype(int)
-        f1 = f1_score(y_true, y_pred, pos_label=1, zero_division=0)
-        if f1 > best_f1:
-            best_f1 = f1
-            best_t = t
-    return best_t
+from src.stacking_training import StackingEnsemble
 
 
 def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
@@ -184,8 +42,8 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
     """
     Run base learner ablation study: 4-learner vs 3-learner vs 2-learner.
     
-    All variants use identical leakage-free procedure (SMOTE-ENN per OOF fold).
-    Includes McNemar test between 4-learner and 3-learner.
+    All variants use identical leakage-free procedure (SMOTE-ENN per OOF fold)
+    and outer OOF threshold sweep matching the main pipeline.
     
     Args:
         X_train_sc: Scaled training features (NOT resampled).
@@ -201,30 +59,64 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
     mulai = time.time()
     
     configs = [
-        ("4-learner (XGB+LGB+CB+LR)", "4-learner"),
-        ("3-learner (LGB+CB+LR)", "3-learner"),
-        ("2-learner (LGB+CB)", "2-learner"),
+        ("4-learner (XGB+LGB+CB+LR)", StackingEnsemble(
+            xgb_params=best_params_xgb,
+            lgbm_params=best_params_lgbm,
+            catboost_params=best_params_cb,
+            seed=SEED,
+            apply_resampling=True,
+            use_xgb=True,
+            use_lr=True
+        )),
+        ("3-learner (LGB+CB+LR)", StackingEnsemble(
+            xgb_params=best_params_xgb,
+            lgbm_params=best_params_lgbm,
+            catboost_params=best_params_cb,
+            seed=SEED,
+            apply_resampling=True,
+            use_xgb=False,
+            use_lr=True
+        )),
+        ("2-learner (LGB+CB)", StackingEnsemble(
+            xgb_params=best_params_xgb,
+            lgbm_params=best_params_lgbm,
+            catboost_params=best_params_cb,
+            seed=SEED,
+            apply_resampling=True,
+            use_xgb=False,
+            use_lr=False
+        )),
     ]
     
     results = []
     all_predictions = {}  # For McNemar
     
-    for label, config_name in configs:
+    for label, model in configs:
         print(f"\n  ── Training: {label} ──")
         
-        factories = _get_base_learner_factories(
-            config_name, best_params_xgb, best_params_lgbm, best_params_cb, SEED
-        )
+        # 1. Optimize threshold via unbiased outer OOF sweep
+        print("    Optimizing threshold via unbiased 5-Fold Stratified CV...")
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
+        y_oof_proba = cross_val_predict(
+            model, X_train_sc, y_train, cv=skf, method="predict_proba", n_jobs=1
+        )[:, 1]
         
-        final_models, meta_learner, oof_meta_proba = _train_stacking_variant(
-            X_train_sc, y_train, factories, SEED
-        )
+        thresholds = np.arange(THRESHOLD_MIN, THRESHOLD_MAX + THRESHOLD_STEP, THRESHOLD_STEP)
+        best_f1 = -1
+        optimal_t = 0.50
+        for t in thresholds:
+            y_pred_t = (y_oof_proba >= t).astype(int)
+            f1_t = f1_score(y_train, y_pred_t, pos_label=1, zero_division=0)
+            if f1_t > best_f1:
+                best_f1 = f1_t
+                optimal_t = t
+                
+        # 2. Fit final model on 100% training data
+        print("    Fitting final model on full training set...")
+        model.fit(X_train_sc, y_train)
         
-        # Threshold optimization using OOF stacking probabilities
-        optimal_t = _find_optimal_threshold_oof(np.array(y_train), oof_meta_proba)
-        
-        # Test predictions
-        y_proba = _predict_stacking(final_models, meta_learner, X_test_sc)
+        # 3. Predict on test set
+        y_proba = model.predict_proba(X_test_sc)[:, 1]
         y_pred = (y_proba >= optimal_t).astype(int)
         
         # Compute metrics
@@ -236,13 +128,18 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
         mcc = matthews_corrcoef(y_test, y_pred)
         
         # Meta-learner coefficients
-        coefs = meta_learner.coef_[0]
-        base_names = list(factories.keys())
+        coefs = model.meta_learner_.coef_[0]
+        base_names = []
+        if model.use_xgb:
+            base_names.append("XGBoost")
+        base_names.extend(["LightGBM", "CatBoost"])
+        if model.use_lr:
+            base_names.append("LogisticRegression")
+            
         coef_str = ", ".join([f"{n}: {c:.4f}" for n, c in zip(base_names, coefs)])
         
         results.append({
             "Configuration": label,
-            "N Base Learners": len(factories),
             "Threshold": optimal_t,
             "F1-Dropout": f1,
             "Recall": rec,
@@ -255,7 +152,7 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
         
         all_predictions[label] = y_pred
         
-        print(f"    Threshold: {optimal_t:.2f}")
+        print(f"    Optimal OOF Threshold: {optimal_t:.2f}")
         print(f"    F1-Dropout: {f1:.4f} | Recall: {rec:.4f} | Precision: {prec:.4f}")
         print(f"    AUC-ROC: {auc_roc:.4f} | Bal Acc: {bal_acc:.4f} | MCC: {mcc:.4f}")
         print(f"    Meta-Learner Weights: {coef_str}")
@@ -342,7 +239,8 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
     width = 0.25
     colors = ["#e74c3c", "#3498db", "#2ecc71"]
     
-    for idx, (_, row) in enumerate(ablation_df.iterrows()):
+    for idx, row_idx in enumerate(ablation_df.index):
+        row = ablation_df.loc[row_idx]
         vals = [row[m] for m in metric_cols]
         ax.bar(x + idx * width, vals, width, label=row["Configuration"],
                color=colors[idx], edgecolor="black", linewidth=0.5)
@@ -357,7 +255,6 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
     ax.legend(fontsize=10)
     ax.grid(axis="y", alpha=0.3)
     
-    # Add annotation for McNemar result
     ax.annotate(
         f"McNemar 4v3: p={result.pvalue:.4f} ({significant})\n{recommendation}",
         xy=(0.5, 0.02), xycoords="axes fraction",
@@ -376,7 +273,6 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
 
 # ─── Standalone execution ─────────────────────────────────────────────────────
 if __name__ == "__main__":
-    """Run ablation study standalone (re-does data prep + Optuna from saved params)."""
     import sys
     import os
     
@@ -394,7 +290,6 @@ if __name__ == "__main__":
     print("  BASE LEARNER ABLATION STUDY (STANDALONE)")
     print("=" * 70)
     
-    # Re-run data preparation
     import importlib
     data_prep = importlib.import_module("src.01_data_preparation")
     load_and_prepare_data = data_prep.load_and_prepare_data
@@ -405,7 +300,6 @@ if __name__ == "__main__":
     X, y, df = load_and_prepare_data()
     X_train, X_test, X_train_sc, X_test_sc, y_train, y_test, scaler = split_and_scale(X, y)
     
-    # Load saved Optuna best params (if available) or use defaults
     import joblib
     
     params_path = os.path.join(OUTPUT_DIR, "optuna_best_params.pkl")
@@ -416,7 +310,6 @@ if __name__ == "__main__":
         p_cb = saved.get("cat", {})
     else:
         print("  ⚠️  No saved Optuna params found. Using defaults.")
-        print("     Run 'python main.py' first for full pipeline.")
         p_xgb = {"random_state": SEED, "use_label_encoder": False, "eval_metric": "logloss"}
         p_lgb = {"random_state": SEED, "verbosity": -1}
         p_cb = {"random_seed": SEED, "verbose": False}

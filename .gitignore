@@ -9,6 +9,7 @@ env/
  *.py[cod]
  *$py.class
  *.pyo
+ *.pyc
 
 # # ─── Jupyter Notebook checkpoints ────────────────────────────────────────────
  .ipynb_checkpoints/

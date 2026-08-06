@@ -9,6 +9,7 @@ Robustness validation using a leakage-free approach:
 """
 
 import time
+import os
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
@@ -54,24 +55,31 @@ def run_cross_validation(X_train, y_train, best_params):
         xgb_p = best_params.get("xgb", best_params.get("xgb_params", best_params))
         lgb_p = best_params.get("lgb", best_params.get("lgbm_params", {}))
         cat_p = best_params.get("cat", best_params.get("catboost_params", {}))
-        print("  [CV] Using StackingEnsemble (XGB+LGB+CB+LR) inside ImbPipeline.")
-        clf_cv = StackingEnsemble(xgb_p, lgb_p, cat_p, seed=SEED)
+        use_xgb = best_params.get("use_xgb", True)
+        base_desc = "XGB+LGB+CB+LR" if use_xgb else "LGB+CB+LR"
+        print(f"  [CV] Using StackingEnsemble ({base_desc}) with internal SMOTE-ENN.")
+        clf_cv = StackingEnsemble(xgb_p, lgb_p, cat_p, seed=SEED, apply_resampling=True, use_xgb=use_xgb)
+        
+        # StackingEnsemble handles SMOTE-ENN internally; pipeline only scales
+        pipe = ImbPipeline([
+            ('scaler', StandardScaler()),
+            ('clf', clf_cv),
+        ])
     else:
         clf_cv = XGBClassifier(**best_params)
-
-    pipe = ImbPipeline([
-        ('scaler', StandardScaler()),
-        ('smote', SMOTE(
-            k_neighbors=SMOTE_K_NEIGHBORS,
-            random_state=SEED,
-            sampling_strategy=SMOTE_TARGET_RATIO
-        )),
-        ('enn', EditedNearestNeighbours(
-            n_neighbors=ENN_N_NEIGHBORS,
-            kind_sel=ENN_KIND_SEL
-        )),
-        ('clf', clf_cv),
-    ])
+        pipe = ImbPipeline([
+            ('scaler', StandardScaler()),
+            ('smote', SMOTE(
+                k_neighbors=SMOTE_K_NEIGHBORS,
+                random_state=SEED,
+                sampling_strategy=SMOTE_TARGET_RATIO
+            )),
+            ('enn', EditedNearestNeighbours(
+                n_neighbors=ENN_N_NEIGHBORS,
+                kind_sel=ENN_KIND_SEL
+            )),
+            ('clf', clf_cv),
+        ])
 
     skf = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=SEED)
     fold_results = []
@@ -100,6 +108,13 @@ def run_cross_validation(X_train, y_train, best_params):
         }
         fold_results.append(fold_metrics)
         print(f"  Fold {fold+1:2d}: F1={f1:.4f}  AUC={auc:.4f}  BA={ba:.4f}  MCC={mcc:.4f}")
+        if is_stacking:
+            clf_cv_fitted = pipe.named_steps['clf']
+            meta_coefs = clf_cv_fitted.meta_learner_.coef_[0]
+            if clf_cv_fitted.use_xgb:
+                print(f"         Meta weights -> XGB: {meta_coefs[0]:.4f}, LGB: {meta_coefs[1]:.4f}, CB: {meta_coefs[2]:.4f}, LR: {meta_coefs[3]:.4f}")
+            else:
+                print(f"         Meta weights -> LGB: {meta_coefs[0]:.4f}, CB: {meta_coefs[1]:.4f}, LR: {meta_coefs[2]:.4f}")
 
     cv_results = pd.DataFrame(fold_results)
 
@@ -110,6 +125,12 @@ def run_cross_validation(X_train, y_train, best_params):
         vals = cv_results[col]
         print(f"  {col:<15} {vals.mean():>8.4f} {vals.std():>8.4f} "
               f"{vals.min():>8.4f} {vals.max():>8.4f}")
+
+    # Save CV results to CSV
+    from src.config import OUTPUT_DIR
+    cv_csv_path = os.path.join(OUTPUT_DIR, "cross_validation_results.csv")
+    cv_results.to_csv(cv_csv_path, index=False)
+    print(f"  📄 Saved CV results to {cv_csv_path}")
 
     catat_waktu("Cross-Validation", mulai)
 

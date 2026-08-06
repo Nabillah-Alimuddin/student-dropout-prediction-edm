@@ -89,24 +89,30 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
                 model.xgb_params,
                 model.lgbm_params,
                 model.catboost_params,
-                seed=SEED
+                seed=SEED,
+                apply_resampling=True,
+                use_xgb=getattr(model, 'use_xgb', True),
+                use_lr=getattr(model, 'use_lr', True)
             )
+            pipe_cv = ImbPipeline([
+                ('scaler', StandardScaler()),
+                ('clf', clf_instance),
+            ])
         else:
             clf_instance = type(model)(**model.get_params())
-
-        pipe_cv = ImbPipeline([
-            ('scaler', StandardScaler()),
-            ('smote', SMOTE(
-                k_neighbors=SMOTE_K_NEIGHBORS,
-                random_state=SEED,
-                sampling_strategy=SMOTE_TARGET_RATIO
-            )),
-            ('enn', EditedNearestNeighbours(
-                n_neighbors=ENN_N_NEIGHBORS,
-                kind_sel=ENN_KIND_SEL
-            )),
-            ('clf', clf_instance),
-        ])
+            pipe_cv = ImbPipeline([
+                ('scaler', StandardScaler()),
+                ('smote', SMOTE(
+                    k_neighbors=SMOTE_K_NEIGHBORS,
+                    random_state=SEED,
+                    sampling_strategy=SMOTE_TARGET_RATIO
+                )),
+                ('enn', EditedNearestNeighbours(
+                    n_neighbors=ENN_N_NEIGHBORS,
+                    kind_sel=ENN_KIND_SEL
+                )),
+                ('clf', clf_instance),
+            ])
         
         skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
         
@@ -224,26 +230,33 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
             model.xgb_params,
             model.lgbm_params,
             model.catboost_params,
-            seed=SEED
+            seed=SEED,
+            apply_resampling=True,
+            use_xgb=getattr(model, 'use_xgb', True),
+            use_lr=getattr(model, 'use_lr', True)
         )
-        model_name = "Stacking (XGB+LGB+CB+LR)"
+        base_desc = "XGB+LGB+CB+LR" if clf_instance_lc.use_xgb else "LGB+CB+LR"
+        model_name = f"Stacking ({base_desc})"
+        lc_pipe = ImbPipeline([
+            ('scaler', StandardScaler()),
+            ('clf', clf_instance_lc),
+        ])
     else:
         clf_instance_lc = type(model)(**model.get_params())
         model_name = "XGBoost"
-
-    lc_pipe = ImbPipeline([
-        ('scaler', StandardScaler()),
-        ('smote', SMOTE(
-            k_neighbors=SMOTE_K_NEIGHBORS,
-            random_state=SEED,
-            sampling_strategy=SMOTE_TARGET_RATIO
-        )),
-        ('enn', EditedNearestNeighbours(
-            n_neighbors=ENN_N_NEIGHBORS,
-            kind_sel=ENN_KIND_SEL
-        )),
-        ('clf', clf_instance_lc),
-    ])
+        lc_pipe = ImbPipeline([
+            ('scaler', StandardScaler()),
+            ('smote', SMOTE(
+                k_neighbors=SMOTE_K_NEIGHBORS,
+                random_state=SEED,
+                sampling_strategy=SMOTE_TARGET_RATIO
+            )),
+            ('enn', EditedNearestNeighbours(
+                n_neighbors=ENN_N_NEIGHBORS,
+                kind_sel=ENN_KIND_SEL
+            )),
+            ('clf', clf_instance_lc),
+        ])
 
     print(f"  Using ImbPipeline (with StandardScaler) on original X_train to prevent leakage.")
 

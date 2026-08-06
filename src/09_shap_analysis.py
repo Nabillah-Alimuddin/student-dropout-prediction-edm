@@ -36,8 +36,16 @@ def run_shap_analysis(model, X_test_sc, y_test, y_pred):
     # ─── Compute SHAP values ──────────────────────────────────────────────
     is_stacking = hasattr(model, 'base_models')
     if is_stacking:
-        target_model = model.base_models['xgb']
-        print("  [SHAP] Running SHAP analysis on XGBoost base learner inside Stacking Ensemble.")
+        if 'xgb' in model.base_models:
+            target_model = model.base_models['xgb']
+            model_name = "XGBoost"
+        elif 'lgb' in model.base_models:
+            target_model = model.base_models['lgb']
+            model_name = "LightGBM"
+        else:
+            target_model = model.base_models['cat']
+            model_name = "CatBoost"
+        print(f"  [SHAP] Running SHAP analysis on {model_name} base learner inside Stacking Ensemble.")
     else:
         target_model = model
 
