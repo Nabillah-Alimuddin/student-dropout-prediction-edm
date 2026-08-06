@@ -55,7 +55,7 @@ def main():
 
     print("=" * 70)
     print("  STUDENT DROPOUT PREDICTION PIPELINE")
-    print("  Stacking (XGB+LGB+CB+LR) + SMOTE-ENN + SHAP Explainability")
+    print("  Stacking (LGB+CB+LR) + SMOTE-ENN + SHAP Explainability")
     print("  Version: V3.1 (Binary Classification — Leakage-Free OOF Fix)")
     print("=" * 70)
     print(f"\n  Output directory: {OUTPUT_DIR}")
