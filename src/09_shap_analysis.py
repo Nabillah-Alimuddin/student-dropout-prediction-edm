@@ -46,6 +46,7 @@ def run_shap_analysis(model, X_test_sc, y_test, y_pred):
             target_model = model.base_models['cat']
             model_name = "CatBoost"
         print(f"  [SHAP] Running SHAP analysis on {model_name} base learner inside Stacking Ensemble.")
+        print(f"  [SHAP] Note: Interpretasi dilakukan terhadap base learner karena SHAP belum secara langsung merepresentasikan keseluruhan keputusan meta-learner.")
     else:
         target_model = model
 

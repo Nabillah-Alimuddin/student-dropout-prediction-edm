@@ -22,7 +22,10 @@ from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import EditedNearestNeighbours
 
-from src.config import SEED, CV_FOLDS, SMOTE_K_NEIGHBORS, SMOTE_TARGET_RATIO, ENN_N_NEIGHBORS, ENN_KIND_SEL
+from src.config import (
+    SEED, CV_FOLDS, SMOTE_K_NEIGHBORS, SMOTE_TARGET_RATIO,
+    ENN_N_NEIGHBORS, ENN_KIND_SEL, THRESHOLD_MIN, THRESHOLD_MAX, THRESHOLD_STEP
+)
 from src.utils import catat_waktu, print_separator
 
 
@@ -82,7 +85,7 @@ def run_cross_validation(X_train, y_train, best_params):
         ])
 
     skf = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=SEED)
-    fold_results = []
+    oof_proba = np.zeros(X_train.shape[0])
 
     for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train)):
         X_tr_f, X_val_f = X_train.iloc[train_idx], X_train.iloc[val_idx]
@@ -91,8 +94,37 @@ def run_cross_validation(X_train, y_train, best_params):
         # Fit leakage-free pipeline on fold training data
         pipe.fit(X_tr_f, y_tr_f)
 
-        y_val_pred = pipe.predict(X_val_f)
         y_val_proba = pipe.predict_proba(X_val_f)[:, 1]
+        oof_proba[val_idx] = y_val_proba
+
+        print(f"  Fold {fold+1:2d} fitted.")
+        if is_stacking:
+            clf_cv_fitted = pipe.named_steps['clf']
+            meta_coefs = clf_cv_fitted.meta_learner_.coef_[0]
+            if clf_cv_fitted.use_xgb:
+                print(f"         Meta weights -> XGB: {meta_coefs[0]:.4f}, LGB: {meta_coefs[1]:.4f}, CB: {meta_coefs[2]:.4f}, LR: {meta_coefs[3]:.4f}")
+            else:
+                print(f"         Meta weights -> LGB: {meta_coefs[0]:.4f}, CB: {meta_coefs[1]:.4f}, LR: {meta_coefs[2]:.4f}")
+
+    # Sweep thresholds on OOF predictions to find the optimal threshold
+    thresholds = np.arange(THRESHOLD_MIN, THRESHOLD_MAX + THRESHOLD_STEP, THRESHOLD_STEP)
+    best_f1 = -1
+    opt_t = 0.50
+    for t in thresholds:
+        y_pred_t = (oof_proba >= t).astype(int)
+        f1_t = f1_score(y_train, y_pred_t, pos_label=1, zero_division=0)
+        if f1_t > best_f1:
+            best_f1 = f1_t
+            opt_t = t
+
+    print(f"\n  [CV] Optimal OOF Threshold Selected: {opt_t:.2f} (Overall OOF F1-Score: {best_f1:.4f})")
+    print(f"  [CV] Re-evaluating fold metrics at optimal threshold ({opt_t:.2f}):")
+
+    fold_results = []
+    for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train)):
+        y_val_f = y_train.iloc[val_idx]
+        y_val_proba = oof_proba[val_idx]
+        y_val_pred = (y_val_proba >= opt_t).astype(int)
 
         f1 = f1_score(y_val_f, y_val_pred, pos_label=1, zero_division=0)
         auc = roc_auc_score(y_val_f, y_val_proba)
@@ -108,13 +140,6 @@ def run_cross_validation(X_train, y_train, best_params):
         }
         fold_results.append(fold_metrics)
         print(f"  Fold {fold+1:2d}: F1={f1:.4f}  AUC={auc:.4f}  BA={ba:.4f}  MCC={mcc:.4f}")
-        if is_stacking:
-            clf_cv_fitted = pipe.named_steps['clf']
-            meta_coefs = clf_cv_fitted.meta_learner_.coef_[0]
-            if clf_cv_fitted.use_xgb:
-                print(f"         Meta weights -> XGB: {meta_coefs[0]:.4f}, LGB: {meta_coefs[1]:.4f}, CB: {meta_coefs[2]:.4f}, LR: {meta_coefs[3]:.4f}")
-            else:
-                print(f"         Meta weights -> LGB: {meta_coefs[0]:.4f}, CB: {meta_coefs[1]:.4f}, LR: {meta_coefs[2]:.4f}")
 
     cv_results = pd.DataFrame(fold_results)
 

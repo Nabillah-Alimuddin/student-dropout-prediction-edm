@@ -33,7 +33,11 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
-from src.config import SEED, OUTPUT_DIR
+from src.config import (
+    SEED, OUTPUT_DIR,
+    SMOTE_K_NEIGHBORS, SMOTE_TARGET_RATIO,
+    ENN_N_NEIGHBORS, ENN_KIND_SEL
+)
 from src.utils import catat_waktu, save_pdf, print_separator
 
 
@@ -59,19 +63,15 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
     print_separator("PHASE 8: FAIR BASELINE MODEL COMPARISON (SMOTE-ENN + THRESHOLD OPT)")
     mulai = time.time()
 
-    # Use resampled data if available; fallback to original scaled train data
-    X_tr_bench = X_res if X_res is not None else X_train_sc
-    y_tr_bench = y_res if y_res is not None else y_train
-
     # Helper function to find optimal threshold via 5-Fold Stratified OOF CV
-    def find_best_threshold_oof(clf, X_tr, y_tr):
+    def find_best_threshold_oof(clf_or_pipe, X_tr, y_tr):
         skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
         try:
             y_oof_proba = cross_val_predict(
-                clf, X_tr, y_tr, cv=skf, method="predict_proba", n_jobs=1
+                clf_or_pipe, X_tr, y_tr, cv=skf, method="predict_proba", n_jobs=1
             )[:, 1]
         except Exception:
-            y_oof_proba = clf.predict_proba(X_tr)[:, 1]
+            y_oof_proba = clf_or_pipe.predict_proba(X_tr)[:, 1]
 
         thresholds = np.arange(0.1, 0.9, 0.01)
         best_f1 = -1
@@ -88,6 +88,12 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
     p_xgb = best_params_xgb or {}
     p_lgb = best_params_lgbm or {}
     p_cb  = best_params_cb or {}
+    if "verbose" not in p_cb:
+        p_cb["verbose"] = 0
+
+    from imblearn.pipeline import Pipeline as ImbPipeline
+    from imblearn.over_sampling import SMOTE
+    from imblearn.under_sampling import EditedNearestNeighbours
 
     baselines = {
         "Logistic Regression + SMOTE-ENN": LogisticRegression(
@@ -110,20 +116,37 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
 
     for name, clf in baselines.items():
         print(f"    Training & Optimizing Threshold: {name}...")
+
+        # Build ImbPipeline to ensure SMOTE-ENN is applied inside CV fold splits
+        pipe = ImbPipeline([
+            ('smote', SMOTE(
+                k_neighbors=SMOTE_K_NEIGHBORS,
+                random_state=SEED,
+                sampling_strategy=SMOTE_TARGET_RATIO
+            )),
+            ('enn', EditedNearestNeighbours(
+                n_neighbors=ENN_N_NEIGHBORS,
+                kind_sel=ENN_KIND_SEL
+            )),
+            ('clf', clf),
+        ])
+
+        # Optimize threshold via OOF on original scaled data (leakage-free)
+        opt_t = find_best_threshold_oof(pipe, X_train_sc, y_train)
+
+        # Fit pipeline on 100% of scaled training data
         if "CatBoost" in name or "XGBoost" in name:
-            clf.fit(X_tr_bench, y_tr_bench, verbose=False)
+            pipe.fit(X_train_sc, y_train, clf__verbose=False)
         else:
-            clf.fit(X_tr_bench, y_tr_bench)
+            pipe.fit(X_train_sc, y_train)
 
-        # Optimize threshold via OOF on resampled data
-        opt_t = find_best_threshold_oof(clf, X_tr_bench, y_tr_bench)
-
-        y_proba = clf.predict_proba(X_test_sc)[:, 1]
+        # Predict on hold-out test set
+        y_proba = pipe.predict_proba(X_test_sc)[:, 1]
         y_pred = (y_proba >= opt_t).astype(int)
 
         print(f"      Optimal Threshold: {opt_t:.2f} | F1: {f1_score(y_test, y_pred, pos_label=1):.4f}")
 
-        models_dict[name] = clf
+        models_dict[name] = pipe
         predictions_dict[name] = y_pred
         proba_dict[name] = y_proba
 

@@ -147,6 +147,20 @@ def main():
     )
 
     # ═══════════════════════════════════════════════════════════════════════
+    # Phase 6b: Threshold Sensitivity Analysis (Recall-First EWS)
+    #
+    # Regenerates threshold_sensitivity_metrics.csv so Section 5 of the
+    # research documentation always reflects the current model's metrics.
+    # ═══════════════════════════════════════════════════════════════════════
+    import numpy as np
+    smoteenn_analysis = importlib.import_module("src.13_smoteenn_analysis")
+    threshold_sensitivity_analysis = smoteenn_analysis.threshold_sensitivity_analysis
+    threshold_sensitivity_analysis(
+        model, X_test_sc, y_test,
+        thresholds=np.arange(0.30, 0.71, 0.05)
+    )
+
+    # ═══════════════════════════════════════════════════════════════════════
     # Phase 7: Fair Baseline Model Comparison
     # ═══════════════════════════════════════════════════════════════════════
     model_comparison = importlib.import_module("src.07_model_comparison")
@@ -173,23 +187,29 @@ def main():
     )
 
     # ═══════════════════════════════════════════════════════════════════════
-    # Phase 8b: McNemar Statistical Significance Test (Stacking vs LightGBM)
+    # Phase 8b: McNemar Statistical Significance Test (Stacking vs Runner-Up)
     #
-    # Focused comparison: tests whether the Stacking model's error pattern
-    # differs significantly from LightGBM (the closest competitor).
+    # Dynamically selects the runner-up model (highest F1 after Proposed)
+    # from the fair comparison table. This ensures the test is always
+    # against the actual closest competitor, not a hardcoded model name.
     # ═══════════════════════════════════════════════════════════════════════
     mcnemar_module = importlib.import_module("src.08_mcnemar")
     run_mcnemar_tests = mcnemar_module.run_mcnemar_tests
 
-    # Build focused predictions dict: Stacking (proposed) + LightGBM only
-    focused_preds = {}
-    for k, v in predictions_dict.items():
-        if "Stacking" in k or "Proposed" in k or "LightGBM" in k:
-            focused_preds[k] = v
+    # Identify proposed model and runner-up dynamically from comparison_df
+    proposed_name = comparison_df.iloc[0]["Model"]  # sorted descending by F1
+    runner_up_name = comparison_df.iloc[1]["Model"]  # second-best F1
+    print(f"\n  [McNemar] Proposed: {proposed_name}")
+    print(f"  [McNemar] Runner-up: {runner_up_name} (F1={comparison_df.iloc[1]['F1-Dropout']:.4f})")
+
+    focused_preds = {
+        k: v for k, v in predictions_dict.items()
+        if k == proposed_name or k == runner_up_name
+    }
 
     mcnemar_results = run_mcnemar_tests(y_test, focused_preds)
 
-    # Save McNemar results
+    # Save McNemar results (filename kept for backward compat with update_documentation.py)
     mcnemar_csv_path = os.path.join(OUTPUT_DIR, "mcnemar_stacking_vs_lgbm.csv")
     mcnemar_results.to_csv(mcnemar_csv_path, index=False)
     print(f"  📄 McNemar results saved to {mcnemar_csv_path}")
