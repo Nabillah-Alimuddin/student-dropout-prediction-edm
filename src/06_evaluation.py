@@ -37,17 +37,17 @@ from src.config import (
 from src.utils import catat_waktu, save_pdf, print_separator
 
 
-def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
+def evaluate_model(model, X_train, y_train, X_test, y_test, X_res, y_res,
                    X_val=None, y_val=None):
     """
     Full model evaluation: metrics, learning curve, ROC, threshold optimization,
     and confusion matrix analysis.
 
     Args:
-        model: Trained XGBoost model.
+        model: Trained model (StackingEnsemble with internal scaler, or XGBoost).
         X_train: Original unscaled training features (for OOF threshold & learning curve).
         y_train: Original training target.
-        X_test_sc: Scaled test features.
+        X_test: Test features (unscaled if model has internal scaler, scaled otherwise).
         y_test: Test target.
         X_res: Resampled training features (reference).
         y_res: Resampled training target (reference).
@@ -58,6 +58,7 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
         results (dict): Dictionary of all evaluation results.
     """
     results = {}
+
 
     # ═══════════════════════════════════════════════════════════════════════
     # PHASE 7.3 — Threshold Optimization (Run first to optimize test predictions)
@@ -85,19 +86,27 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
         
         if is_stacking:
             from src.stacking_training import StackingEnsemble
+            has_internal_scaling = getattr(model, 'apply_scaling', False)
             clf_instance = StackingEnsemble(
                 model.xgb_params,
                 model.lgbm_params,
                 model.catboost_params,
                 seed=SEED,
                 apply_resampling=True,
+                apply_scaling=has_internal_scaling,
                 use_xgb=getattr(model, 'use_xgb', True),
                 use_lr=getattr(model, 'use_lr', True)
             )
-            pipe_cv = ImbPipeline([
-                ('scaler', StandardScaler()),
-                ('clf', clf_instance),
-            ])
+            if has_internal_scaling:
+                # V3.2: StackingEnsemble handles its own scaling internally.
+                # Do NOT wrap in another StandardScaler — that would double-scale.
+                pipe_cv = clf_instance
+            else:
+                # Legacy path: external scaling for backward compat
+                pipe_cv = ImbPipeline([
+                    ('scaler', StandardScaler()),
+                    ('clf', clf_instance),
+                ])
         else:
             clf_instance = type(model)(**model.get_params())
             pipe_cv = ImbPipeline([
@@ -139,8 +148,8 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
     best_idx = np.argmax(f1_scores_val)
     optimal_threshold = thresholds[best_idx]
 
-    # Predict test probabilities
-    y_proba = model.predict_proba(X_test_sc)[:, 1]
+    # Predict test probabilities (model auto-scales if apply_scaling=True)
+    y_proba = model.predict_proba(X_test)[:, 1]
     
     # Report test-set metrics at the validation/OOF-selected threshold
     y_pred = (y_proba >= optimal_threshold).astype(int)
@@ -226,21 +235,27 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
     is_stacking = hasattr(model, 'base_models')
     if is_stacking:
         from src.stacking_training import StackingEnsemble
+        has_internal_scaling = getattr(model, 'apply_scaling', False)
         clf_instance_lc = StackingEnsemble(
             model.xgb_params,
             model.lgbm_params,
             model.catboost_params,
             seed=SEED,
             apply_resampling=True,
+            apply_scaling=has_internal_scaling,
             use_xgb=getattr(model, 'use_xgb', True),
             use_lr=getattr(model, 'use_lr', True)
         )
         base_desc = "XGB+LGB+CB+LR" if clf_instance_lc.use_xgb else "LGB+CB+LR"
         model_name = f"Stacking ({base_desc})"
-        lc_pipe = ImbPipeline([
-            ('scaler', StandardScaler()),
-            ('clf', clf_instance_lc),
-        ])
+        if has_internal_scaling:
+            # V3.2: StackingEnsemble handles its own scaling — no outer scaler
+            lc_pipe = clf_instance_lc
+        else:
+            lc_pipe = ImbPipeline([
+                ('scaler', StandardScaler()),
+                ('clf', clf_instance_lc),
+            ])
     else:
         clf_instance_lc = type(model)(**model.get_params())
         model_name = "XGBoost"
@@ -258,7 +273,7 @@ def evaluate_model(model, X_train, y_train, X_test_sc, y_test, X_res, y_res,
             ('clf', clf_instance_lc),
         ])
 
-    print(f"  Using ImbPipeline (with StandardScaler) on original X_train to prevent leakage.")
+    print(f"  Using leakage-free pipeline on original X_train (scaling {'internal' if is_stacking and has_internal_scaling else 'via ImbPipeline'}).")
 
     lc_n_jobs = 1 if is_stacking else -1
     train_sizes, train_scores, val_scores = learning_curve(

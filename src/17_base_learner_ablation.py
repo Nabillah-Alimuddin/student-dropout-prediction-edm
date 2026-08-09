@@ -37,18 +37,20 @@ from src.utils import catat_waktu, save_pdf, print_separator
 from src.stacking_training import StackingEnsemble
 
 
-def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
+def run_base_learner_ablation(X_train, y_train, X_test, y_test,
                                best_params_xgb, best_params_lgbm, best_params_cb):
     """
     Run base learner ablation study: 4-learner vs 3-learner vs 2-learner.
     
-    All variants use identical leakage-free procedure (SMOTE-ENN per OOF fold)
-    and outer OOF threshold sweep matching the main pipeline.
+    All variants use identical leakage-free procedure:
+    - StandardScaler per OOF fold (V3.2 scaling consistency fix)
+    - SMOTE-ENN per OOF fold (V3.1 leakage fix)
+    - Outer OOF threshold sweep matching the main pipeline
     
     Args:
-        X_train_sc: Scaled training features (NOT resampled).
+        X_train: Original training features (NOT pre-scaled, NOT resampled).
         y_train: Original training target.
-        X_test_sc: Scaled test features.
+        X_test: Original test features (NOT pre-scaled).
         y_test: Test target.
         best_params_xgb, best_params_lgbm, best_params_cb: Optuna hyperparameters.
     
@@ -65,6 +67,7 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
             catboost_params=best_params_cb,
             seed=SEED,
             apply_resampling=True,
+            apply_scaling=True,
             use_xgb=True,
             use_lr=True
         )),
@@ -74,6 +77,7 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
             catboost_params=best_params_cb,
             seed=SEED,
             apply_resampling=True,
+            apply_scaling=True,
             use_xgb=False,
             use_lr=True
         )),
@@ -83,6 +87,7 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
             catboost_params=best_params_cb,
             seed=SEED,
             apply_resampling=True,
+            apply_scaling=True,
             use_xgb=False,
             use_lr=False
         )),
@@ -98,7 +103,7 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
         print("    Optimizing threshold via unbiased 5-Fold Stratified CV...")
         skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
         y_oof_proba = cross_val_predict(
-            model, X_train_sc, y_train, cv=skf, method="predict_proba", n_jobs=1
+            model, X_train, y_train, cv=skf, method="predict_proba", n_jobs=1
         )[:, 1]
         
         thresholds = np.arange(THRESHOLD_MIN, THRESHOLD_MAX + THRESHOLD_STEP, THRESHOLD_STEP)
@@ -113,10 +118,10 @@ def run_base_learner_ablation(X_train_sc, y_train, X_test_sc, y_test,
                 
         # 2. Fit final model on 100% training data
         print("    Fitting final model on full training set...")
-        model.fit(X_train_sc, y_train)
+        model.fit(X_train, y_train)
         
-        # 3. Predict on test set
-        y_proba = model.predict_proba(X_test_sc)[:, 1]
+        # 3. Predict on test set (model auto-scales via internal scaler)
+        y_proba = model.predict_proba(X_test)[:, 1]
         y_pred = (y_proba >= optimal_t).astype(int)
         
         # Compute metrics
@@ -315,6 +320,6 @@ if __name__ == "__main__":
         p_cb = {"random_seed": SEED, "verbose": False}
     
     ablation_df = run_base_learner_ablation(
-        X_train_sc, y_train, X_test_sc, y_test,
+        X_train, y_train, X_test, y_test,
         p_xgb, p_lgb, p_cb
     )

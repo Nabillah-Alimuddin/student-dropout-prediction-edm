@@ -42,7 +42,8 @@ from src.utils import catat_waktu, save_pdf, print_separator
 
 
 def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optimal_threshold=0.50,
-                   X_res=None, y_res=None, best_params_xgb=None, best_params_lgbm=None, best_params_cb=None):
+                   X_res=None, y_res=None, best_params_xgb=None, best_params_lgbm=None, best_params_cb=None,
+                   X_test=None):
     """
     Perform a completely FAIR (Apple-to-Apple) comparison where ALL models are trained
     on SMOTE-ENN resampled data and threshold-optimized via Stratified OOF CV.
@@ -51,7 +52,7 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
         model_proposed: Trained Proposed Stacking Ensemble model.
         X_train_sc: Scaled training features.
         y_train: Training target.
-        X_test_sc: Scaled test features.
+        X_test_sc: Scaled test features (for baseline models).
         y_test: Test target.
         optimal_threshold: Optimal threshold for proposed model.
         X_res: SMOTE-ENN resampled training features.
@@ -59,6 +60,8 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
         best_params_xgb: Optuna best params for XGBoost.
         best_params_lgbm: Optuna best params for LightGBM.
         best_params_cb: Optuna best params for CatBoost.
+        X_test: Unscaled test features (for proposed model with internal scaler).
+                If None, falls back to X_test_sc for backward compatibility.
     """
     print_separator("PHASE 8: FAIR BASELINE MODEL COMPARISON (SMOTE-ENN + THRESHOLD OPT)")
     mulai = time.time()
@@ -163,7 +166,10 @@ def compare_models(model_proposed, X_train_sc, y_train, X_test_sc, y_test, optim
 
     # Add Proposed Stacking Ensemble (Proposed Model)
     proposed_name = "Stacking (Proposed: LGB+CB+LR) + SMOTE-ENN"
-    y_proba_prop = model_proposed.predict_proba(X_test_sc)[:, 1]
+    # V3.2: Use X_test (unscaled) if available — model has internal scaler (apply_scaling=True)
+    # This prevents double-scaling (model would scale already-scaled data)
+    X_test_for_proposed = X_test if X_test is not None else X_test_sc
+    y_proba_prop = model_proposed.predict_proba(X_test_for_proposed)[:, 1]
     y_pred_prop = (y_proba_prop >= optimal_threshold).astype(int)
 
     models_dict[proposed_name] = model_proposed

@@ -47,12 +47,12 @@ def train_final_model(X_res, y_res, best_params):
     return model
 
 
-def train_final_model_stacking(X_train_sc, y_train, best_xgb, best_lgbm, best_cb, use_xgb=True, use_lr=True):
+def train_final_model_stacking(X_train, y_train, best_xgb, best_lgbm, best_cb, use_xgb=True, use_lr=True):
     """
     Train stacking ensemble as final model and save it.
     
     Args:
-        X_train_sc: Scaled training features (NOT resampled by SMOTE-ENN).
+        X_train: Original training features (NOT pre-scaled, NOT resampled).
         y_train: Original training target.
         best_xgb: Best XGBoost hyperparameters from Optuna.
         best_lgbm: Best LightGBM hyperparameters from Optuna.
@@ -61,14 +61,19 @@ def train_final_model_stacking(X_train_sc, y_train, best_xgb, best_lgbm, best_cb
         use_lr: If True, includes Logistic Regression in the base models.
     
     Note:
-        SMOTE-ENN is applied inside each OOF fold within StackingEnsemble.fit()
-        to prevent synthetic sample leakage (V3.1 fix).
+        V3.2: StandardScaler is applied INSIDE each OOF fold within
+        StackingEnsemble.fit() to match the scaling regime used during Optuna
+        tuning (apply_scaling=True). This eliminates the previous inconsistency
+        where Optuna used fold-level scaling but the final model used global scaling.
+        
+        V3.1: SMOTE-ENN is applied INSIDE each OOF fold within StackingEnsemble.fit()
+        to prevent synthetic sample leakage.
     """
     print_separator("PHASE 6: FINAL MODEL TRAINING (STACKING)")
     mulai = time.time()
     
     from src.stacking_training import train_stacking_ensemble
-    model = train_stacking_ensemble(X_train_sc, y_train, best_xgb, best_lgbm, best_cb, use_xgb=use_xgb, use_lr=use_lr)
+    model = train_stacking_ensemble(X_train, y_train, best_xgb, best_lgbm, best_cb, use_xgb=use_xgb, use_lr=use_lr)
     
     # Save model
     joblib.dump(model, MODEL_PATH)
@@ -76,4 +81,5 @@ def train_final_model_stacking(X_train_sc, y_train, best_xgb, best_lgbm, best_cb
     
     catat_waktu("Stacking Model Training", mulai)
     return model
+
 

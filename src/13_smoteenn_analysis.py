@@ -168,8 +168,8 @@ def run_smoteenn_analysis(X_train_sc, y_train, X_res, y_res, X_test_sc, y_test, 
 # Threshold Sensitivity Analysis (Recall‑first Early‑Warning)
 # ----------------------------------------------------------------------
 def threshold_sensitivity_analysis(
-    model: XGBClassifier,
-    X_test_sc,
+    model,
+    X_test,
     y_test,
     thresholds: list[float] | None = None,
     pos_label: int = 1,
@@ -182,10 +182,10 @@ def threshold_sensitivity_analysis(
 
     Parameters
     ----------
-    model : XGBClassifier
-        Trained XGBoost binary classifier.
-    X_test_sc : array‑like
-        Scaled test features.
+    model : StackingEnsemble or XGBClassifier
+        Trained binary classifier.
+    X_test : array‑like
+        Test features (unscaled if model has internal scaling).
     y_test : array‑like
         True test labels.
     thresholds : list of float, optional
@@ -211,8 +211,8 @@ def threshold_sensitivity_analysis(
     if thresholds is None:
         thresholds = np.arange(0.30, 0.71, 0.05)
 
-    # 1️⃣ Compute probabilities once
-    proba = model.predict_proba(X_test_sc)[:, 1]
+    # 1️⃣ Compute probabilities once (auto-scales if model has internal scaler)
+    proba = model.predict_proba(X_test)[:, 1]
 
     # 2️⃣ Evaluate metrics for each threshold
     rows = []

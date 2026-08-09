@@ -135,7 +135,7 @@ def main():
     # ═══════════════════════════════════════════════════════════════════════
     training = importlib.import_module("src.05_training")
     train_final_model_stacking = training.train_final_model_stacking
-    model = train_final_model_stacking(X_train_sc, y_train, best_params_xgb, best_params_lgbm, best_params_cb, use_xgb=False)
+    model = train_final_model_stacking(X_train, y_train, best_params_xgb, best_params_lgbm, best_params_cb, use_xgb=False)
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 6: Model Evaluation & Threshold Optimization
@@ -143,7 +143,7 @@ def main():
     evaluation = importlib.import_module("src.06_evaluation")
     evaluate_model = evaluation.evaluate_model
     eval_results = evaluate_model(
-        model, X_train, y_train, X_test_sc, y_test, X_res, y_res
+        model, X_train, y_train, X_test, y_test, X_res, y_res
     )
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -156,7 +156,7 @@ def main():
     smoteenn_analysis = importlib.import_module("src.13_smoteenn_analysis")
     threshold_sensitivity_analysis = smoteenn_analysis.threshold_sensitivity_analysis
     threshold_sensitivity_analysis(
-        model, X_test_sc, y_test,
+        model, X_test, y_test,
         thresholds=np.arange(0.30, 0.71, 0.05)
     )
 
@@ -171,7 +171,8 @@ def main():
         X_res=X_res, y_res=y_res,
         best_params_xgb=best_params_xgb,
         best_params_lgbm=best_params_lgbm,
-        best_params_cb=best_params_cb
+        best_params_cb=best_params_cb,
+        X_test=X_test  # V3.2: unscaled test for proposed model (auto-scales internally)
     )
 
     plot_logistic_regression_confusion_matrix = model_comparison.plot_logistic_regression_confusion_matrix
@@ -185,6 +186,9 @@ def main():
     shap_values, top_features = run_shap_analysis(
         model, X_test_sc, y_test, eval_results["y_pred"]
     )
+    # Note: X_test_sc is correct here — SHAP runs on base learners which
+    # were fitted on scaled data. The internal scaler produces the same
+    # statistics as X_test_sc (both derived from the same training set).
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 8b: McNemar Statistical Significance Test (Stacking vs Runner-Up)
@@ -222,6 +226,41 @@ def main():
     cv_results = run_cross_validation(X_train, y_train, best_params_stacking)
 
     # ═══════════════════════════════════════════════════════════════════════
+    # Phase 9b: Bootstrap Confidence Interval (Poin 2)
+    # ═══════════════════════════════════════════════════════════════════════
+    bootstrap_ci = importlib.import_module("src.18_bootstrap_ci")
+    run_bootstrap_ci = bootstrap_ci.run_bootstrap_ci
+    run_bootstrap_ci(y_test, eval_results["y_pred"], cv_results, n_bootstrap=1000)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 9c: Cost-Sensitive Threshold Selection (Poin 4)
+    # ═══════════════════════════════════════════════════════════════════════
+    cost_sensitive = importlib.import_module("src.20_cost_sensitive_threshold")
+    run_cost_sensitive_analysis = cost_sensitive.run_cost_sensitive_analysis
+    run_cost_sensitive_analysis(y_test, eval_results["y_proba"], eval_results["optimal_threshold"])
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 9d: Bootstrap SHAP Stability Analysis (Poin 5)
+    # ═══════════════════════════════════════════════════════════════════════
+    shap_stability = importlib.import_module("src.21_shap_stability")
+    run_shap_stability = shap_stability.run_shap_stability
+    run_shap_stability(X_test_sc, shap_values, n_bootstrap=1000)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 9e: Model Calibration Analysis (Poin 6)
+    # ═══════════════════════════════════════════════════════════════════════
+    calibration_analysis = importlib.import_module("src.15_calibration_analysis")
+    run_calibration_analysis = calibration_analysis.run_calibration_analysis
+    run_calibration_analysis(models_dict, X_test, X_test_sc, y_test)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 9f: Subgroup Fairness Check (Poin 7)
+    # ═══════════════════════════════════════════════════════════════════════
+    subgroup_fairness = importlib.import_module("src.22_subgroup_fairness")
+    run_subgroup_fairness = subgroup_fairness.run_subgroup_fairness
+    run_subgroup_fairness(model, X_test, y_test, eval_results["y_pred"])
+
+    # ═══════════════════════════════════════════════════════════════════════
     # Phase 10: Final Research Summary
     # ═══════════════════════════════════════════════════════════════════════
     summary = importlib.import_module("src.11_summary")
@@ -233,19 +272,20 @@ def main():
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 11: Base Learner Ablation Study (4 vs 3 vs 2 Learners)
-    #
-    # Evaluates whether dropping XGBoost (near-zero meta-learner weight)
-    # impacts performance. Compares:
-    #   4-learner: XGB+LGB+CB+LR (current)
-    #   3-learner: LGB+CB+LR (drop XGBoost)
-    #   2-learner: LGB+CB (minimal tree ensemble)
     # ═══════════════════════════════════════════════════════════════════════
     ablation_module = importlib.import_module("src.17_base_learner_ablation")
     run_base_learner_ablation = ablation_module.run_base_learner_ablation
     ablation_df = run_base_learner_ablation(
-        X_train_sc, y_train, X_test_sc, y_test,
+        X_train, y_train, X_test, y_test,
         best_params_xgb, best_params_lgbm, best_params_cb
     )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 11b: Multi-Seed Robustness Analysis (Poin 3)
+    # ═══════════════════════════════════════════════════════════════════════
+    multiseed_robustness = importlib.import_module("src.19_multiseed_robustness")
+    run_multiseed_robustness = multiseed_robustness.run_multiseed_robustness
+    run_multiseed_robustness(X, y, best_params_xgb, best_params_lgbm, best_params_cb)
 
     # ═══════════════════════════════════════════════════════════════════════
     # Phase 12: Auto-Update Documentation & PDF Generation
